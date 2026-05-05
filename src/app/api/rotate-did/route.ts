@@ -5,12 +5,13 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const leadPhone = body?.leadPhone as string | undefined;
+    const userId = body?.user_id as string | undefined;
 
-    if (!leadPhone) {
-      return NextResponse.json({ error: "leadPhone is required" }, { status: 400 });
+    if (!leadPhone || !userId) {
+      return NextResponse.json({ error: "leadPhone and user_id are required" }, { status: 400 });
     }
 
-    const { bestDid, leadAreaCode } = await selectBestDid(leadPhone);
+    const { bestDid, leadAreaCode } = await selectBestDid(leadPhone, userId);
 
     if (!bestDid) {
       return NextResponse.json({ error: "No available DID found" }, { status: 404 });

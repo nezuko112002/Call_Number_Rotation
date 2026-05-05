@@ -3,9 +3,11 @@ import { extractAreaCode, normalizePhone, toFixedNum } from "./utils";
 import { getClosestAreaCodeMatch, getDidWarmupCap, scoreDid, updateDidScoreAfterCall } from "./did-engine";
 import type { CallLogRecord, CallResult, DidRecord, LeadRecord } from "@/types";
 
-export async function listDidPool() {
+export async function listDidPool(userId?: string) {
   const supabase = getSupabaseServerClient();
-  const { data, error } = await supabase.from("did_pool").select("*").order("created_at", { ascending: false });
+  let query = supabase.from("did_pool").select("*").order("created_at", { ascending: false });
+  if (userId) query = query.eq("user_id", userId);
+  const { data, error } = await query;
   if (error) throw error;
   return (data ?? []) as DidRecord[];
 }
@@ -24,9 +26,9 @@ export async function listCallLogs() {
   return (data ?? []) as CallLogRecord[];
 }
 
-export async function selectBestDid(leadPhone: string) {
+export async function selectBestDid(leadPhone: string, userId?: string) {
   const leadAreaCode = extractAreaCode(leadPhone);
-  const dids = await listDidPool();
+  const dids = await listDidPool(userId);
 
   const activeDids = dids.filter(
     (did) => did.status === "active" && did.calls_today < getDidWarmupCap(did) && did.spam_score < 80,
@@ -58,15 +60,19 @@ export async function selectBestDid(leadPhone: string) {
   return { bestDid: best, leadAreaCode };
 }
 
-export async function updateDidAfterCall(didNumber: string, callResult: CallResult) {
+export async function updateDidAfterCall(didNumber: string, callResult: CallResult, userId?: string) {
   const supabase = getSupabaseServerClient();
   const normalizedDidNumber = normalizePhone(didNumber);
-  const { data: didExact, error } = await supabase.from("did_pool").select("*").eq("did", didNumber).single();
+  let didQuery = supabase.from("did_pool").select("*").eq("did", didNumber);
+  if (userId) didQuery = didQuery.eq("user_id", userId);
+  const { data: didExact, error } = await didQuery.single();
   if (error && error.code !== "PGRST116") throw error;
 
   let did = didExact as DidRecord | null;
   if (!did) {
-    const { data: dids, error: listError } = await supabase.from("did_pool").select("*");
+    let listQuery = supabase.from("did_pool").select("*");
+    if (userId) listQuery = listQuery.eq("user_id", userId);
+    const { data: dids, error: listError } = await listQuery;
     if (listError) throw listError;
     did =
       ((dids ?? []) as DidRecord[]).find((row) => normalizePhone(row.did) === normalizedDidNumber) ?? null;
@@ -74,10 +80,13 @@ export async function updateDidAfterCall(didNumber: string, callResult: CallResu
   if (!did) throw new Error("DID not found");
 
   const nextScore = updateDidScoreAfterCall(did as DidRecord, callResult);
-  const [totalCallsRes, answeredCallsRes] = await Promise.all([
-    supabase.from("call_logs").select("id, did", { count: "exact" }),
-    supabase.from("call_logs").select("id, did", { count: "exact" }).eq("result", "answered"),
-  ]);
+  let totalCallsQuery = supabase.from("call_logs").select("id, did", { count: "exact" });
+  let answeredCallsQuery = supabase.from("call_logs").select("id, did", { count: "exact" }).eq("result", "answered");
+  if (userId) {
+    totalCallsQuery = totalCallsQuery.eq("user_id", userId);
+    answeredCallsQuery = answeredCallsQuery.eq("user_id", userId);
+  }
+  const [totalCallsRes, answeredCallsRes] = await Promise.all([totalCallsQuery, answeredCallsQuery]);
   if (totalCallsRes.error) throw totalCallsRes.error;
   if (answeredCallsRes.error) throw answeredCallsRes.error;
 

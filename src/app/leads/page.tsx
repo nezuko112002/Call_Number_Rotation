@@ -133,7 +133,7 @@ export default function LeadsPage() {
       const rotateRes = await fetch("/api/rotate-did", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ leadPhone: lead.phone }),
+        body: JSON.stringify({ leadPhone: lead.phone, user_id: userId }),
       });
       const rotateData = await rotateRes.json();
       if (!rotateRes.ok) {
@@ -148,6 +148,7 @@ export default function LeadsPage() {
           to: lead.phone,
           callerId: rotateData.did,
           agentIdentity: identity,
+          leadId: lead.id,
           user_id: userId,
         }),
       });

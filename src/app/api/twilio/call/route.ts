@@ -1,14 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import twilio from "twilio";
-import { getSupabaseServerClient } from "@/lib/supabase";
-import { updateDidAfterCall } from "@/lib/db";
-import { normalizePhone } from "@/lib/utils";
-import type { CallResult } from "@/types";
 
 interface CreateCallBody {
   to?: string;
   callerId?: string;
   agentIdentity?: string;
+  leadId?: string;
   user_id?: string;
 }
 
@@ -30,11 +27,12 @@ export async function POST(req: NextRequest) {
   const to = body.to?.trim();
   const callerId = body.callerId?.trim();
   const agentIdentity = body.agentIdentity?.trim();
+  const leadId = body.leadId?.trim();
   const userId = body.user_id?.trim();
 
-  if (!to || !callerId || !agentIdentity || !userId) {
+  if (!to || !callerId || !agentIdentity || !userId || !leadId) {
     return NextResponse.json(
-      { error: "to, callerId, agentIdentity, and user_id are required" },
+      { error: "to, callerId, agentIdentity, leadId, and user_id are required" },
       { status: 400 },
     );
   }
@@ -42,33 +40,21 @@ export async function POST(req: NextRequest) {
   const client = twilio(accountSid, authToken);
 
   try {
+    const callbackUrl = new URL("/api/twilio/call-status", baseUrl);
+    callbackUrl.searchParams.set("to", to);
+    callbackUrl.searchParams.set("callerId", callerId);
+    callbackUrl.searchParams.set("leadId", leadId);
+    callbackUrl.searchParams.set("userId", userId);
+
     const call = await client.calls.create({
       from: callerId,
       to: `client:${agentIdentity}`,
       url: `${baseUrl}/api/twilio/voice?to=${encodeURIComponent(to)}&callerId=${encodeURIComponent(callerId)}`,
       method: "POST",
+      statusCallback: callbackUrl.toString(),
+      statusCallbackMethod: "POST",
+      statusCallbackEvent: ["completed"],
     });
-
-    // Keep DID metrics in sync for the Twilio Device call path.
-    const result: CallResult = "answered";
-    const supabase = getSupabaseServerClient();
-    const timestamp = new Date().toISOString();
-    const normalizedTo = normalizePhone(to);
-    const normalizedDid = normalizePhone(callerId);
-
-    try {
-      await supabase.from("call_logs").insert({
-        phone: normalizedTo,
-        did: normalizedDid,
-        result,
-        timestamp,
-        duration: null,
-        user_id: userId,
-      });
-      await updateDidAfterCall(normalizedDid, result);
-    } catch (metricsError) {
-      console.error("Failed to update DID metrics after Twilio call", metricsError);
-    }
 
     return NextResponse.json({ callSid: call.sid, status: call.status });
   } catch (error) {
