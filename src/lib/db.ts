@@ -99,8 +99,17 @@ export async function updateDidAfterCall(didNumber: string, callResult: CallResu
   if (updateError) throw updateError;
 }
 
-export async function getDashboardAnalytics() {
-  const [dids, logs] = await Promise.all([listDidPool(), listCallLogs()]);
+export async function getDashboardAnalytics(userId: string) {
+  const supabase = getSupabaseServerClient();
+  const [{ data: didsData, error: didsError }, { data: logsData, error: logsError }] = await Promise.all([
+    supabase.from("did_pool").select("*").eq("user_id", userId),
+    supabase.from("call_logs").select("*").eq("user_id", userId),
+  ]);
+  if (didsError) throw didsError;
+  if (logsError) throw logsError;
+
+  const dids = (didsData ?? []) as DidRecord[];
+  const logs = (logsData ?? []) as CallLogRecord[];
   const today = new Date().toISOString().slice(0, 10);
   const todayLogs = logs.filter((log) => log.timestamp.slice(0, 10) === today);
 

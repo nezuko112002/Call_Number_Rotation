@@ -9,6 +9,7 @@ interface CreateCallBody {
   to?: string;
   callerId?: string;
   agentIdentity?: string;
+  user_id?: string;
 }
 
 export async function POST(req: NextRequest) {
@@ -29,10 +30,11 @@ export async function POST(req: NextRequest) {
   const to = body.to?.trim();
   const callerId = body.callerId?.trim();
   const agentIdentity = body.agentIdentity?.trim();
+  const userId = body.user_id?.trim();
 
-  if (!to || !callerId || !agentIdentity) {
+  if (!to || !callerId || !agentIdentity || !userId) {
     return NextResponse.json(
-      { error: "to, callerId, and agentIdentity are required" },
+      { error: "to, callerId, agentIdentity, and user_id are required" },
       { status: 400 },
     );
   }
@@ -61,6 +63,7 @@ export async function POST(req: NextRequest) {
         result,
         timestamp,
         duration: null,
+        user_id: userId,
       });
       await updateDidAfterCall(normalizedDid, result);
     } catch (metricsError) {

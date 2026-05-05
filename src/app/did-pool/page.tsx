@@ -1,9 +1,10 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui";
 import { getDidWarmupCap } from "@/lib/did-engine";
+import { getSupabaseBrowserClient } from "@/lib/supabase";
 import type { DidRecord } from "@/types";
 
 export default function DidPoolPage() {
@@ -12,32 +13,65 @@ export default function DidPoolPage() {
   const [areaCode, setAreaCode] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [userId, setUserId] = useState<string | null>(null);
+  const supabase = getSupabaseBrowserClient();
 
-  const load = async () => {
+  const load = useCallback(async () => {
+    if (!userId) {
+      setDids([]);
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     try {
-      const res = await fetch("/api/did-pool");
+      const res = await fetch(`/api/did-pool?user_id=${encodeURIComponent(userId)}`);
       const json = await res.json();
       if (res.ok) setDids(json);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [userId]);
+
+  useEffect(() => {
+    const bootstrap = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user?.id) {
+        setError("You must be signed in to view DID pool.");
+        setDids([]);
+        setIsLoading(false);
+        return;
+      }
+
+      setUserId(user.id);
+    };
+
+    void bootstrap();
+  }, [supabase]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       void load();
     }, 0);
     return () => clearTimeout(timer);
-  }, []);
+  }, [load]);
 
   const onAdd = async (e: FormEvent) => {
     e.preventDefault();
     setError("");
+
+    if (!userId) {
+      setError("You must be signed in to add a DID.");
+      return;
+    }
+
     const res = await fetch("/api/did-pool", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ did, area_code: areaCode }),
+      body: JSON.stringify({ did, area_code: areaCode, user_id: userId }),
     });
     const json = await res.json();
     if (!res.ok) {
@@ -50,23 +84,34 @@ export default function DidPoolPage() {
   };
 
   const updateStatus = async (id: string, status: "active" | "cooldown") => {
+    if (!userId) {
+      setError("You must be signed in to update DID status.");
+      return;
+    }
+
     await fetch("/api/did-pool", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, status }),
+      body: JSON.stringify({ id, user_id: userId, status }),
     });
     load();
   };
 
   const deleteDid = async (id: string) => {
     setError("");
+
+    if (!userId) {
+      setError("You must be signed in to delete DIDs.");
+      return;
+    }
+
     const confirmDelete = window.confirm("Delete this DID number? This action cannot be undone.");
     if (!confirmDelete) return;
 
     const res = await fetch("/api/did-pool", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
+      body: JSON.stringify({ id, user_id: userId }),
     });
 
     const json = await res.json();

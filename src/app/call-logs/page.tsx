@@ -2,10 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell";
+import { getSupabaseBrowserClient } from "@/lib/supabase";
 import type { CallLogRecord } from "@/types";
 
 export default function CallLogsPage() {
   const [logs, setLogs] = useState<CallLogRecord[]>([]);
+  const [error, setError] = useState("");
+  const supabase = getSupabaseBrowserClient();
 
   const formatDuration = (value: number | null) => {
     if (value == null) return "-";
@@ -23,12 +26,25 @@ export default function CallLogsPage() {
 
   useEffect(() => {
     const load = async () => {
-      const res = await fetch("/api/call-logs");
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user?.id) {
+        setError("You must be signed in to view call logs.");
+        setLogs([]);
+        return;
+      }
+
+      const res = await fetch(`/api/call-logs?user_id=${encodeURIComponent(user.id)}`);
       const json = await res.json();
-      if (res.ok) setLogs(json);
+      if (res.ok) {
+        setLogs(json);
+      } else {
+        setError(json.error ?? "Failed to load call logs.");
+      }
     };
-    load();
-  }, []);
+    void load();
+  }, [supabase]);
 
   return (
     <AppShell>
@@ -37,6 +53,7 @@ export default function CallLogsPage() {
           <h1 className="text-3xl font-semibold tracking-tight text-slate-900">Call Logs</h1>
           <p className="mt-1 text-sm text-slate-500">Historical outbound call events and execution outcomes.</p>
         </div>
+        {error ? <p className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">{error}</p> : null}
         <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">

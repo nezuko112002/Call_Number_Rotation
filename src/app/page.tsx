@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { AppShell } from "@/components/app-shell";
+import { getSupabaseBrowserClient } from "@/lib/supabase";
 
 interface DashboardData {
   totalCallsToday: number;
@@ -17,7 +18,9 @@ interface DashboardData {
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState("");
+  const [userId, setUserId] = useState<string | null>(null);
   const isMounted = typeof window !== "undefined";
+  const supabase = getSupabaseBrowserClient();
   const stats = [
     {
       title: "Total Calls Today",
@@ -49,9 +52,26 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
+    const bootstrap = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user?.id) {
+        setError("You must be signed in to view dashboard analytics.");
+        return;
+      }
+      setUserId(user.id);
+    };
+
+    void bootstrap();
+  }, [supabase]);
+
+  useEffect(() => {
+    if (!userId) return;
+
     const load = async () => {
       try {
-        const res = await fetch("/api/dashboard");
+        const res = await fetch(`/api/dashboard?user_id=${encodeURIComponent(userId)}`);
         const json = await res.json();
         if (!res.ok) throw new Error(json.error ?? "Failed to load dashboard");
         setData(json);
@@ -63,7 +83,7 @@ export default function DashboardPage() {
     load();
     const id = setInterval(load, 10000);
     return () => clearInterval(id);
-  }, []);
+  }, [userId]);
 
   return (
     <AppShell>
