@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import twilio from "twilio";
+import { getSupabaseServerClient } from "@/lib/supabase";
+import { updateDidAfterCall } from "@/lib/db";
+import { normalizePhone } from "@/lib/utils";
+import type { CallResult } from "@/types";
 
 interface CreateCallBody {
   to?: string;
@@ -42,6 +46,26 @@ export async function POST(req: NextRequest) {
       url: `${baseUrl}/api/twilio/voice?to=${encodeURIComponent(to)}&callerId=${encodeURIComponent(callerId)}`,
       method: "POST",
     });
+
+    // Keep DID metrics in sync for the Twilio Device call path.
+    const result: CallResult = "answered";
+    const supabase = getSupabaseServerClient();
+    const timestamp = new Date().toISOString();
+    const normalizedTo = normalizePhone(to);
+    const normalizedDid = normalizePhone(callerId);
+
+    try {
+      await supabase.from("call_logs").insert({
+        phone: normalizedTo,
+        did: normalizedDid,
+        result,
+        timestamp,
+        duration: null,
+      });
+      await updateDidAfterCall(normalizedDid, result);
+    } catch (metricsError) {
+      console.error("Failed to update DID metrics after Twilio call", metricsError);
+    }
 
     return NextResponse.json({ callSid: call.sid, status: call.status });
   } catch (error) {

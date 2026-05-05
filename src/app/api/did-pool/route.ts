@@ -1,13 +1,41 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { extractAreaCode } from "@/lib/utils";
+import { normalizePhone, toFixedNum } from "@/lib/utils";
 
 export async function GET() {
   try {
     const supabase = getSupabaseServerClient();
     const { data, error } = await supabase.from("did_pool").select("*").order("created_at", { ascending: false });
     if (error) throw error;
-    return NextResponse.json(data ?? []);
+
+    const didRows = data ?? [];
+    const { data: callLogs, error: logsError } = await supabase.from("call_logs").select("did, result");
+    if (logsError) throw logsError;
+
+    const stats = new Map<string, { total: number; answered: number }>();
+    for (const log of callLogs ?? []) {
+      const key = normalizePhone(log.did);
+      const current = stats.get(key) ?? { total: 0, answered: 0 };
+      current.total += 1;
+      if (log.result === "answered") {
+        current.answered += 1;
+      }
+      stats.set(key, current);
+    }
+
+    const withLiveAnswerRate = didRows.map((row) => {
+      const key = normalizePhone(row.did);
+      const didStats = stats.get(key) ?? { total: 0, answered: 0 };
+      const answerRate = didStats.total > 0 ? toFixedNum((didStats.answered / didStats.total) * 100) : 0;
+      return {
+        ...row,
+        answer_rate: answerRate,
+        total_calls: didStats.total || row.total_calls || 0,
+      };
+    });
+
+    return NextResponse.json(withLiveAnswerRate);
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Unexpected error" },

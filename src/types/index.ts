@@ -35,6 +35,7 @@ export interface CallLogRecord {
   id: string;
   phone: string;
   did: string;
+  lead_name?: string | null;
   result: CallResult;
   duration: number | null;
   timestamp: string;

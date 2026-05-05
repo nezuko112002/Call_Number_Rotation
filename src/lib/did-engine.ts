@@ -59,19 +59,14 @@ export function getClosestAreaCodeMatch(candidates: DidRecord[], leadAreaCode: s
 
 export function updateDidScoreAfterCall(did: DidRecord, callResult: CallResult) {
   let spamScore = did.spam_score;
-  let answerRate = did.answer_rate;
 
   if (callResult === "answered") {
-    answerRate = Math.min(100, answerRate + 2);
     spamScore = Math.max(0, spamScore - 1);
   } else if (callResult === "no_answer") {
-    answerRate = Math.max(0, answerRate - 1);
     spamScore = Math.min(100, spamScore + 1);
   } else if (callResult === "spam_flagged") {
-    answerRate = Math.max(0, answerRate - 3);
     spamScore = Math.min(100, spamScore + 18);
   } else {
-    answerRate = Math.max(0, answerRate - 2);
     spamScore = Math.min(100, spamScore + 5);
   }
 
@@ -83,7 +78,6 @@ export function updateDidScoreAfterCall(did: DidRecord, callResult: CallResult) 
   }
 
   return {
-    answer_rate: toFixedNum(answerRate),
     spam_score: toFixedNum(spamScore),
     status,
   };

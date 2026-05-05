@@ -1,5 +1,5 @@
 import { getSupabaseServerClient } from "./supabase";
-import { extractAreaCode } from "./utils";
+import { extractAreaCode, normalizePhone, toFixedNum } from "./utils";
 import { getClosestAreaCodeMatch, getDidWarmupCap, scoreDid, updateDidScoreAfterCall } from "./did-engine";
 import type { CallLogRecord, CallResult, DidRecord, LeadRecord } from "@/types";
 
@@ -60,18 +60,38 @@ export async function selectBestDid(leadPhone: string) {
 
 export async function updateDidAfterCall(didNumber: string, callResult: CallResult) {
   const supabase = getSupabaseServerClient();
-  const { data: did, error } = await supabase.from("did_pool").select("*").eq("did", didNumber).single();
-  if (error) throw error;
+  const normalizedDidNumber = normalizePhone(didNumber);
+  const { data: didExact, error } = await supabase.from("did_pool").select("*").eq("did", didNumber).single();
+  if (error && error.code !== "PGRST116") throw error;
+
+  let did = didExact as DidRecord | null;
+  if (!did) {
+    const { data: dids, error: listError } = await supabase.from("did_pool").select("*");
+    if (listError) throw listError;
+    did =
+      ((dids ?? []) as DidRecord[]).find((row) => normalizePhone(row.did) === normalizedDidNumber) ?? null;
+  }
   if (!did) throw new Error("DID not found");
 
   const nextScore = updateDidScoreAfterCall(did as DidRecord, callResult);
+  const [totalCallsRes, answeredCallsRes] = await Promise.all([
+    supabase.from("call_logs").select("id, did", { count: "exact" }),
+    supabase.from("call_logs").select("id, did", { count: "exact" }).eq("result", "answered"),
+  ]);
+  if (totalCallsRes.error) throw totalCallsRes.error;
+  if (answeredCallsRes.error) throw answeredCallsRes.error;
+
+  const totalCallCount = (totalCallsRes.data ?? []).filter((log) => normalizePhone(log.did) === normalizePhone(did.did)).length;
+  const answeredCallCount = (answeredCallsRes.data ?? []).filter((log) => normalizePhone(log.did) === normalizePhone(did.did)).length;
+  const answerRate = totalCallCount > 0 ? toFixedNum((answeredCallCount / totalCallCount) * 100) : 0;
 
   const { error: updateError } = await supabase
     .from("did_pool")
     .update({
       ...nextScore,
+      answer_rate: answerRate,
       calls_today: (did.calls_today ?? 0) + 1,
-      total_calls: (did.total_calls ?? 0) + 1,
+      total_calls: totalCallCount,
       last_used: new Date().toISOString(),
     })
     .eq("id", did.id);
