@@ -24,6 +24,7 @@ export default function LeadsPage() {
   const [toast, setToast] = useState<{ tone: "success" | "warn"; message: string } | null>(null);
   const [isMuted, setIsMuted] = useState(false);
   const [callDurationSeconds, setCallDurationSeconds] = useState(0);
+  const [activeLeadCall, setActiveLeadCall] = useState<{ name: string; phone: string } | null>(null);
   const [twilioIdentityHint, setTwilioIdentityHint] = useState("");
   const [autoDialEnabled, setAutoDialEnabled] = useState(false);
   const autoDialLockRef = useRef(false);
@@ -193,6 +194,7 @@ export default function LeadsPage() {
     setCallingLeadIds((prev) => ({ ...prev, [lead.id]: true }));
     setError("");
     setCallDurationSeconds(0);
+    setActiveLeadCall({ name: lead.name, phone: lead.phone });
     try {
       const rotateRes = await fetch("/api/rotate-did", {
         method: "POST",
@@ -221,6 +223,14 @@ export default function LeadsPage() {
       setCallingLeadIds((prev) => ({ ...prev, [lead.id]: false }));
     }
   }, [callingLeadIds, identity, load, userId]);
+
+  useEffect(() => {
+    if (callStatus === "ringing" || callStatus === "in-progress") return;
+    if (activeCall) return;
+    window.setTimeout(() => {
+      setActiveLeadCall(null);
+    }, 0);
+  }, [activeCall, callStatus]);
 
   const deleteLead = useCallback(async (lead: LeadRecord) => {
     if (!userId || deletingLeadIds[lead.id]) return;
@@ -402,26 +412,34 @@ export default function LeadsPage() {
 
           {/* In-call controls */}
           {showCallControls && (
-            <div className="flex items-center gap-2 border-t border-slate-100 px-4 py-2">
-              <button
-                onClick={() => { const next = !isMuted; mute(next); setIsMuted(next); }}
-                disabled={!activeCall}
-                className="inline-flex items-center gap-1.5 rounded-md bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 ring-1 ring-amber-200 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {isMuted ? (
-                  <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 005.12 2.12M15 9.34V4a3 3 0 00-5.94-.6"/><path d="M17 16.95A7 7 0 015 12v-2m14 0v2a7 7 0 01-.11 1.23M12 19v4M8 23h8"/></svg>
-                ) : (
-                  <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/></svg>
-                )}
-                {isMuted ? "Unmute" : "Mute"}
-              </button>
-              <button
-                onClick={() => { hangup(); setCallDurationSeconds(0); }}
-                className="inline-flex items-center gap-1.5 rounded-md bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 ring-1 ring-rose-200 transition hover:bg-rose-100"
-              >
-                <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.68 13.31a16 16 0 003.41 2.6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7 2 2 0 011.72 2v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.42 19.42 0 01-3.33-2.67m-2.67-3.34a19.79 19.79 0 01-3.07-8.63A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91"/><line x1="23" y1="1" x2="1" y2="23"/></svg>
-                Hang Up
-              </button>
+            <div className="border-t border-slate-100 px-4 py-2">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => { const next = !isMuted; mute(next); setIsMuted(next); }}
+                  disabled={!activeCall}
+                  className="inline-flex items-center gap-1.5 rounded-md bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 ring-1 ring-amber-200 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isMuted ? (
+                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 005.12 2.12M15 9.34V4a3 3 0 00-5.94-.6"/><path d="M17 16.95A7 7 0 015 12v-2m14 0v2a7 7 0 01-.11 1.23M12 19v4M8 23h8"/></svg>
+                  ) : (
+                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/></svg>
+                  )}
+                  {isMuted ? "Unmute" : "Mute"}
+                </button>
+                <button
+                  onClick={() => { hangup(); setCallDurationSeconds(0); }}
+                  className="inline-flex items-center gap-1.5 rounded-md bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 ring-1 ring-rose-200 transition hover:bg-rose-100"
+                >
+                  <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.68 13.31a16 16 0 003.41 2.6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7 2 2 0 011.72 2v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.42 19.42 0 01-3.33-2.67m-2.67-3.34a19.79 19.79 0 01-3.07-8.63A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91"/><line x1="23" y1="1" x2="1" y2="23"/></svg>
+                  Hang Up
+                </button>
+              </div>
+              {activeLeadCall ? (
+                <p className="mt-2 text-xs font-medium text-slate-600">
+                  Calling <span className="text-slate-900">{activeLeadCall.name}</span> at{" "}
+                  <span className="text-slate-900">{activeLeadCall.phone}</span>
+                </p>
+              ) : null}
             </div>
           )}
         </div>
