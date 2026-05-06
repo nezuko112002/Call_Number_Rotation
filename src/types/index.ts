@@ -41,3 +41,11 @@ export interface CallLogRecord {
   timestamp: string;
   created_at?: string;
 }
+
+export interface NoteRecord {
+  id: string;
+  user_id: string;
+  content: string;
+  updated_at: string;
+  created_at?: string;
+}

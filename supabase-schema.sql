@@ -33,3 +33,11 @@ create table if not exists call_logs (
   duration integer,
   created_at timestamptz not null default now()
 );
+
+create table if not exists notes (
+  id uuid primary key default uuid_generate_v4(),
+  user_id uuid not null unique,
+  content text not null default '',
+  updated_at timestamptz not null default now(),
+  created_at timestamptz not null default now()
+);

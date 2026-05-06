@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
+import { NotepadDrawer } from "@/components/notepad-drawer";
 
 const navItems = [
   { href: "/", label: "Dashboard" },
@@ -111,6 +112,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="min-w-0">
         <main className="mx-auto w-full max-w-7xl px-4 py-6 md:px-6 md:py-8">{children}</main>
       </div>
+      <NotepadDrawer />
     </div>
   );
 }
