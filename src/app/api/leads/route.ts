@@ -78,7 +78,10 @@ export async function POST(req: NextRequest) {
     const existingPhoneSet = new Set((existingLeads ?? []).map((lead) => normalizePhone(String(lead.phone ?? ""))));
     const payload = dedupedWithinRequest
       .filter((lead) => !existingPhoneSet.has(lead.normalized_phone))
-      .map(({ normalized_phone: _normalizedPhone, ...lead }) => lead);
+      .map(({ normalized_phone, ...lead }) => {
+        void normalized_phone;
+        return lead;
+      });
 
     const skippedDuplicatesCount = dedupedWithinRequest.length - payload.length;
 

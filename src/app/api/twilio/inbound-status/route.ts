@@ -39,9 +39,14 @@ export async function POST(req: NextRequest) {
     return new NextResponse(response.toString(), { headers: { "Content-Type": "text/xml" } });
   }
 
-  const form = await req.formData();
-  const dialStatus = String(form.get("DialCallStatus") ?? "failed");
-  const durationRaw = String(form.get("DialCallDuration") ?? "0");
+  let form: FormData | null = null;
+  try {
+    form = await req.formData();
+  } catch {
+    form = null;
+  }
+  const dialStatus = String(form?.get("DialCallStatus") ?? "failed");
+  const durationRaw = String(form?.get("DialCallDuration") ?? "0");
   const duration = Number.parseInt(durationRaw, 10);
   const safeDuration = Number.isFinite(duration) ? duration : 0;
   const result = mapDialStatusToResult(dialStatus, safeDuration);
@@ -81,4 +86,8 @@ export async function POST(req: NextRequest) {
   }
   response.hangup();
   return new NextResponse(response.toString(), { headers: { "Content-Type": "text/xml" } });
+}
+
+export async function GET(req: NextRequest) {
+  return POST(req);
 }

@@ -34,11 +34,24 @@ async function resolveUserIdFromDid(didNumber: string): Promise<string | null> {
 }
 
 export async function POST(req: NextRequest) {
-  const form = await req.formData();
+  let form: FormData | null = null;
+  try {
+    form = await req.formData();
+  } catch {
+    form = null;
+  }
   const query = req.nextUrl.searchParams;
 
-  const leadPhoneRaw = query.get("leadPhone") ?? form.get("From")?.toString() ?? "";
-  const didRaw = query.get("did") ?? form.get("To")?.toString() ?? "";
+  const leadPhoneRaw =
+    query.get("leadPhone") ??
+    form?.get("From")?.toString() ??
+    form?.get("Caller")?.toString() ??
+    "";
+  const didRaw =
+    query.get("did") ??
+    form?.get("To")?.toString() ??
+    form?.get("Called")?.toString() ??
+    "";
   const retry = Math.max(0, toInt(query.get("retry"), 0));
   const userIdFromQuery = query.get("userId");
 
@@ -47,6 +60,14 @@ export async function POST(req: NextRequest) {
 
   const response = new twilio.twiml.VoiceResponse();
   if (!leadPhone || !did) {
+    console.warn("[twilio/inbound] missing phone fields", {
+      leadPhoneRaw,
+      didRaw,
+      from: form?.get("From")?.toString() ?? null,
+      to: form?.get("To")?.toString() ?? null,
+      called: form?.get("Called")?.toString() ?? null,
+      caller: form?.get("Caller")?.toString() ?? null,
+    });
     response.say("We are unable to process your callback right now. Please try again later.");
     response.hangup();
     return new NextResponse(response.toString(), { headers: { "Content-Type": "text/xml" } });
@@ -54,6 +75,7 @@ export async function POST(req: NextRequest) {
 
   const userId = userIdFromQuery ?? (await resolveUserIdFromDid(did));
   if (!userId) {
+    console.warn("[twilio/inbound] could not resolve user from DID", { did, didRaw });
     response.say("The number you reached is not currently available.");
     response.hangup();
     return new NextResponse(response.toString(), { headers: { "Content-Type": "text/xml" } });
