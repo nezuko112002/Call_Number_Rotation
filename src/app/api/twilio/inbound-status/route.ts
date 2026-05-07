@@ -11,6 +11,11 @@ function toInt(value: string | null, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function resolvePublicBaseUrl(req: NextRequest): string {
+  const configured = process.env.NEXT_PUBLIC_BASE_URL?.trim();
+  return configured && configured.length > 0 ? configured : req.nextUrl.origin;
+}
+
 function mapDialStatusToResult(status: string, duration: number): CallResult {
   const normalized = status.toLowerCase();
   if (normalized === "busy") return "busy";
@@ -43,7 +48,7 @@ export async function POST(req: NextRequest) {
 
   // Agent busy/unavailable: keep caller on hold and retry.
   if (result !== "answered" && retry < maxRetry) {
-    const retryUrl = new URL("/api/twilio/inbound", req.nextUrl.origin);
+    const retryUrl = new URL("/api/twilio/inbound", resolvePublicBaseUrl(req));
     retryUrl.searchParams.set("userId", userId);
     retryUrl.searchParams.set("leadPhone", normalizePhone(leadPhoneRaw));
     retryUrl.searchParams.set("did", normalizePhone(didRaw));

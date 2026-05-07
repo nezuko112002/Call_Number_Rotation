@@ -11,6 +11,11 @@ function toInt(value: string | null, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function resolvePublicBaseUrl(req: NextRequest): string {
+  const configured = process.env.NEXT_PUBLIC_BASE_URL?.trim();
+  return configured && configured.length > 0 ? configured : req.nextUrl.origin;
+}
+
 async function resolveUserIdFromDid(didNumber: string): Promise<string | null> {
   const supabase = getSupabaseServerClient();
   const normalizedDid = normalizePhone(didNumber);
@@ -58,7 +63,7 @@ export async function POST(req: NextRequest) {
     response.say("Please hold while we connect you to your agent.");
   }
 
-  const statusUrl = new URL("/api/twilio/inbound-status", req.nextUrl.origin);
+  const statusUrl = new URL("/api/twilio/inbound-status", resolvePublicBaseUrl(req));
   statusUrl.searchParams.set("userId", userId);
   statusUrl.searchParams.set("leadPhone", leadPhone);
   statusUrl.searchParams.set("did", did);
@@ -77,4 +82,8 @@ export async function POST(req: NextRequest) {
   return new NextResponse(response.toString(), {
     headers: { "Content-Type": "text/xml" },
   });
+}
+
+export async function GET(req: NextRequest) {
+  return POST(req);
 }
