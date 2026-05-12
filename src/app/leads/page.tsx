@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Papa from "papaparse";
 import { AppShell } from "@/components/app-shell";
 import type { LeadRecord } from "@/types";
@@ -8,12 +8,6 @@ import { useTwilioDevice } from "@/hooks/useTwilioDevice";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
 
 function sortLeadsByPriority(rows: LeadRecord[]): LeadRecord[] {
-  const statusRank: Record<LeadRecord["status"], number> = {
-    pending: 0,
-    dialed: 1,
-    completed: 2,
-  };
-
   return [...rows].sort((a, b) => {
     const rankDiff = statusRank[a.status] - statusRank[b.status];
     if (rankDiff !== 0) return rankDiff;
@@ -21,6 +15,47 @@ function sortLeadsByPriority(rows: LeadRecord[]): LeadRecord[] {
     const aCreated = a.created_at ? new Date(a.created_at).getTime() : 0;
     const bCreated = b.created_at ? new Date(b.created_at).getTime() : 0;
     return bCreated - aCreated;
+  });
+}
+
+type LeadSortOption = "priority" | "newest" | "oldest" | "name-asc" | "name-desc" | "status" | "area-code";
+
+const statusRank: Record<LeadRecord["status"], number> = {
+  pending: 0,
+  dialed: 1,
+  completed: 2,
+};
+
+function getLeadCreatedTime(lead: LeadRecord): number {
+  return lead.created_at ? new Date(lead.created_at).getTime() : 0;
+}
+
+function compareText(a: string | null | undefined, b: string | null | undefined): number {
+  return (a ?? "").localeCompare(b ?? "", undefined, { numeric: true, sensitivity: "base" });
+}
+
+function sortLeads(rows: LeadRecord[], sortOption: LeadSortOption): LeadRecord[] {
+  if (sortOption === "priority") return sortLeadsByPriority(rows);
+
+  return [...rows].sort((a, b) => {
+    switch (sortOption) {
+      case "newest":
+        return getLeadCreatedTime(b) - getLeadCreatedTime(a);
+      case "oldest":
+        return getLeadCreatedTime(a) - getLeadCreatedTime(b);
+      case "name-asc":
+        return compareText(a.name, b.name);
+      case "name-desc":
+        return compareText(b.name, a.name);
+      case "status": {
+        const rankDiff = statusRank[a.status] - statusRank[b.status];
+        return rankDiff !== 0 ? rankDiff : getLeadCreatedTime(b) - getLeadCreatedTime(a);
+      }
+      case "area-code":
+        return compareText(a.area_code, b.area_code) || compareText(a.name, b.name);
+      default:
+        return 0;
+    }
   });
 }
 
@@ -32,6 +67,8 @@ export default function LeadsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortOption, setSortOption] = useState<LeadSortOption>("priority");
   const [callingLeadIds, setCallingLeadIds] = useState<Record<string, boolean>>({});
   const [deletingLeadIds, setDeletingLeadIds] = useState<Record<string, boolean>>({});
   const [leadPendingDelete, setLeadPendingDelete] = useState<LeadRecord | null>(null);
@@ -69,10 +106,34 @@ export default function LeadsPage() {
     return () => window.clearTimeout(timeoutId);
   }, [toast]);
 
-  const totalPages = Math.max(1, Math.ceil(leads.length / LEADS_PER_PAGE));
+  const filteredAndSortedLeads = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    const filtered = query
+      ? leads.filter((lead) => {
+          const searchable = [
+            lead.name,
+            lead.phone,
+            lead.area_code,
+            lead.status,
+            lead.assigned_did,
+            lead.result,
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase();
+
+          return searchable.includes(query);
+        })
+      : leads;
+
+    return sortLeads(filtered, sortOption);
+  }, [leads, searchQuery, sortOption]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredAndSortedLeads.length / LEADS_PER_PAGE));
   const safeCurrentPage = Math.min(currentPage, totalPages);
   const pageStart = (safeCurrentPage - 1) * LEADS_PER_PAGE;
-  const paginatedLeads = leads.slice(pageStart, pageStart + LEADS_PER_PAGE);
+  const paginatedLeads = filteredAndSortedLeads.slice(pageStart, pageStart + LEADS_PER_PAGE);
+  const hasActiveSearch = searchQuery.trim().length > 0;
 
   useEffect(() => {
     if (callStatus !== "in-progress") return;
@@ -552,6 +613,70 @@ export default function LeadsPage() {
           </div>
         )}
 
+        {/* Search and Sort */}
+        <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-end sm:justify-between">
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <label htmlFor="lead-search" className="text-xs font-medium text-slate-500">Search leads</label>
+            <div className="relative">
+              <input
+                id="lead-search"
+                type="search"
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setCurrentPage(1);
+                }}
+                placeholder="Search name, phone, status, DID, or result"
+                className="h-9 w-full rounded-md border border-slate-300 px-3 pr-16 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+              />
+              {hasActiveSearch ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery("");
+                    setCurrentPage(1);
+                  }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded px-2 py-1 text-xs font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+                >
+                  Clear
+                </button>
+              ) : null}
+            </div>
+          </div>
+          <div className="flex flex-col gap-1 sm:w-56">
+            <label htmlFor="lead-sort" className="text-xs font-medium text-slate-500">Sort by</label>
+            <select
+              id="lead-sort"
+              value={sortOption}
+              onChange={(e) => {
+                setSortOption(e.target.value as LeadSortOption);
+                setCurrentPage(1);
+              }}
+              className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+            >
+              <option value="priority">Priority: pending first</option>
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+              <option value="name-asc">Name: A to Z</option>
+              <option value="name-desc">Name: Z to A</option>
+              <option value="status">Status</option>
+              <option value="area-code">Area code</option>
+            </select>
+          </div>
+          <p className="text-sm font-medium text-slate-500 sm:pb-2">
+            {hasActiveSearch ? (
+              <>
+                <span className="text-slate-800">{filteredAndSortedLeads.length}</span> match{filteredAndSortedLeads.length !== 1 ? "es" : ""} of{" "}
+                <span className="text-slate-800">{leads.length}</span>
+              </>
+            ) : (
+              <>
+                <span className="text-slate-800">{leads.length}</span> lead{leads.length !== 1 ? "s" : ""}
+              </>
+            )}
+          </p>
+        </div>
+
         {/* Leads Table */}
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <table className="min-w-full text-sm">
@@ -591,6 +716,13 @@ export default function LeadsPage() {
                 <tr>
                   <td colSpan={8} className="px-4 py-12 text-center text-sm text-slate-400">
                     No leads yet. Add a lead above or upload a CSV to get started.
+                  </td>
+                </tr>
+              )}
+              {!isLoading && leads.length > 0 && filteredAndSortedLeads.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="px-4 py-12 text-center text-sm text-slate-400">
+                    No leads match your search.
                   </td>
                 </tr>
               )}
@@ -659,14 +791,14 @@ export default function LeadsPage() {
         </div>
 
         {/* Pagination */}
-        {leads.length > LEADS_PER_PAGE && (
+        {filteredAndSortedLeads.length > LEADS_PER_PAGE && (
           <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
             <p className="text-sm text-slate-500">
               Showing{" "}
               <span className="font-semibold text-slate-800">{pageStart + 1}</span>–
-              <span className="font-semibold text-slate-800">{Math.min(pageStart + LEADS_PER_PAGE, leads.length)}</span>{" "}
+              <span className="font-semibold text-slate-800">{Math.min(pageStart + LEADS_PER_PAGE, filteredAndSortedLeads.length)}</span>{" "}
               of{" "}
-              <span className="font-semibold text-slate-800">{leads.length}</span>
+              <span className="font-semibold text-slate-800">{filteredAndSortedLeads.length}</span>
             </p>
             <div className="flex items-center gap-1.5">
               <button

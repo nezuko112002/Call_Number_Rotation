@@ -7,6 +7,22 @@ import { getDidWarmupCap } from "@/lib/did-engine";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
 import type { DidRecord } from "@/types";
 
+type ConfigureResult = {
+  did: string;
+  status: "updated" | "not_found_in_twilio" | "error";
+  voiceUrl?: string;
+  error?: string;
+};
+
+type ConfigureSummary = {
+  inboundUrl: string;
+  total: number;
+  updated: number;
+  missing: number;
+  errors: number;
+  results: ConfigureResult[];
+};
+
 export default function DidPoolPage() {
   const [dids, setDids] = useState<DidRecord[]>([]);
   const [did, setDid] = useState("");
@@ -16,6 +32,8 @@ export default function DidPoolPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [deletingDidIds, setDeletingDidIds] = useState<Record<string, boolean>>({});
   const [didPendingDelete, setDidPendingDelete] = useState<DidRecord | null>(null);
+  const [isConfiguring, setIsConfiguring] = useState(false);
+  const [configureSummary, setConfigureSummary] = useState<ConfigureSummary | null>(null);
   const supabase = getSupabaseBrowserClient();
 
   const load = useCallback(async () => {
@@ -99,6 +117,31 @@ export default function DidPoolPage() {
     load();
   };
 
+  const configureInboundWebhooks = async () => {
+    if (!userId) {
+      setError("You must be signed in to configure inbound webhooks.");
+      return;
+    }
+    setError("");
+    setConfigureSummary(null);
+    setIsConfiguring(true);
+    try {
+      const res = await fetch("/api/twilio/configure-numbers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: userId }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setError(json.error ?? "Failed to configure inbound webhooks.");
+        return;
+      }
+      setConfigureSummary(json as ConfigureSummary);
+    } finally {
+      setIsConfiguring(false);
+    }
+  };
+
   const deleteDid = async (id: string) => {
     setError("");
 
@@ -141,10 +184,79 @@ export default function DidPoolPage() {
   return (
     <AppShell>
       <section className="mx-auto max-w-7xl space-y-5 px-4 py-6 sm:px-6">
-        <div>
-          <h1 className="text-3xl font-semibold tracking-tight text-slate-900">DID Pool Management</h1>
-          <p className="mt-1 text-sm text-slate-500">Per-number rotation health and suppression controls.</p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-3xl font-semibold tracking-tight text-slate-900">DID Pool Management</h1>
+            <p className="mt-1 text-sm text-slate-500">Per-number rotation health and suppression controls.</p>
+          </div>
+          <button
+            type="button"
+            onClick={configureInboundWebhooks}
+            disabled={isConfiguring || !userId || dids.length === 0}
+            title="Point each DID's voice webhook at /api/twilio/inbound so callbacks ring the agent."
+            className="inline-flex h-9 items-center gap-2 rounded-md border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isConfiguring ? (
+              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700" />
+            ) : (
+              <svg
+                className="h-3.5 w-3.5"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                aria-hidden="true"
+              >
+                <path d="M12 2v4" />
+                <path d="M12 18v4" />
+                <path d="M4.93 4.93l2.83 2.83" />
+                <path d="M16.24 16.24l2.83 2.83" />
+                <path d="M2 12h4" />
+                <path d="M18 12h4" />
+                <path d="M4.93 19.07l2.83-2.83" />
+                <path d="M16.24 7.76l2.83-2.83" />
+              </svg>
+            )}
+            Configure inbound webhooks
+          </button>
         </div>
+
+        {configureSummary ? (
+          <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm shadow-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                {configureSummary.updated} updated
+              </span>
+              {configureSummary.missing > 0 ? (
+                <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
+                  {configureSummary.missing} not found in Twilio
+                </span>
+              ) : null}
+              {configureSummary.errors > 0 ? (
+                <span className="rounded-full bg-rose-100 px-2.5 py-1 text-xs font-semibold text-rose-700">
+                  {configureSummary.errors} errors
+                </span>
+              ) : null}
+              <span className="text-xs text-slate-500">
+                Inbound URL: <code className="font-mono">{configureSummary.inboundUrl}</code>
+              </span>
+            </div>
+            {configureSummary.errors > 0 || configureSummary.missing > 0 ? (
+              <ul className="mt-3 space-y-1 text-xs text-slate-600">
+                {configureSummary.results
+                  .filter((r) => r.status !== "updated")
+                  .map((r) => (
+                    <li key={r.did} className="font-mono">
+                      <span className="text-slate-900">{r.did}</span>{" "}
+                      <span className="text-slate-500">
+                        — {r.status === "not_found_in_twilio" ? "not in Twilio account" : r.error}
+                      </span>
+                    </li>
+                  ))}
+              </ul>
+            ) : null}
+          </div>
+        ) : null}
 
         <form
           onSubmit={onAdd}

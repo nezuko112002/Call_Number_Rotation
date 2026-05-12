@@ -16,8 +16,15 @@ export async function POST(req: NextRequest) {
   const callerIdFromBody = callerIdFromQuery ?? body.get("CallerId")?.toString() ?? null;
   const from = body.get("From")?.toString() ?? null;
   const defaultCallerId = process.env.TWILIO_DEFAULT_CALLER_ID ?? "";
-  const calledVia = body.get("CalledVia")?.toString() ?? "";
-  const isInboundPstn = !toFromQuery && !callerIdFromQuery && calledVia.toLowerCase() === "pstn";
+
+  // Twilio sets Direction to "inbound" for any PSTN call entering a Twilio number,
+  // regardless of whether the number's voice config points at a TwiML App or a direct
+  // webhook. CalledVia is only populated when one Twilio number forwards to another,
+  // so we can't rely on it to recognize a direct PSTN inbound call.
+  const direction = body.get("Direction")?.toString().toLowerCase() ?? "";
+  const isClientLeg = (from ?? "").startsWith("client:");
+  const hasOutboundQueryParams = Boolean(toFromQuery || callerIdFromQuery);
+  const isInboundPstn = !hasOutboundQueryParams && !isClientLeg && direction.startsWith("inbound");
 
   if (isInboundPstn) {
     const leadPhone = normalizePhone(from ?? "");
