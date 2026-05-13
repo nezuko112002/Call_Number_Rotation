@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { AppShell } from "@/components/app-shell";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
 import { conversationLeadKey, normalizePhone } from "@/lib/utils";
@@ -16,6 +16,19 @@ interface MessageConversation {
   lastTimestamp: string;
   unreadCount: number;
   messages: MessageLogRecord[];
+}
+
+/** Inbound messages received after this timestamp count as unread (per conversation). */
+function computeUnreadBadge(
+  conv: MessageConversation,
+  selectedConvId: string | null,
+  readThroughMs: Record<string, number>,
+): number {
+  if (conv.id === selectedConvId) return 0;
+  const thru = readThroughMs[conv.id];
+  const inboundReceived = conv.messages.filter((m) => m.direction === "inbound" && m.status === "received");
+  if (thru === undefined) return inboundReceived.length;
+  return inboundReceived.filter((m) => new Date(m.timestamp).getTime() > thru).length;
 }
 
 function formatConversationTime(value: string): string {
@@ -99,6 +112,8 @@ export default function MessagesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const hasLoadedMessagesRef = useRef(false);
+  /** When user last opened this thread (epoch ms); inbound after this counts as unread when thread is not selected. */
+  const [readThroughByConvId, setReadThroughByConvId] = useState<Record<string, number>>({});
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
 
   const conversations = useMemo(() => buildConversations(messages), [messages]);
@@ -132,6 +147,12 @@ export default function MessagesPage() {
     ? leads.find((lead) => lead.id === activeConversationLeadId) ?? null
     : selectedLead;
   const canSendMessage = Boolean(userId && draftMessage.trim() && (selectedConversation || selectedLead));
+
+  useEffect(() => {
+    const id = selectedConversation?.id;
+    if (!id) return;
+    setReadThroughByConvId((prev) => ({ ...prev, [id]: Date.now() }));
+  }, [selectedConversation?.id]);
 
   const loadMessages = useCallback(
     async (resolvedUserId?: string | null) => {
@@ -201,8 +222,7 @@ export default function MessagesPage() {
     return () => window.clearTimeout(timeoutId);
   }, []);
 
-  const sendMessage = async (event: FormEvent) => {
-    event.preventDefault();
+  const submitMessage = async () => {
     if (!userId || !canSendMessage || isSending) return;
 
     setIsSending(true);
@@ -235,6 +255,17 @@ export default function MessagesPage() {
     } finally {
       setIsSending(false);
     }
+  };
+
+  const sendMessage = (event: FormEvent) => {
+    event.preventDefault();
+    void submitMessage();
+  };
+
+  const onDraftKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== "Enter" || event.shiftKey) return;
+    event.preventDefault();
+    void submitMessage();
   };
 
   return (
@@ -385,6 +416,11 @@ export default function MessagesPage() {
                 <div className="space-y-2">
                   {filteredConversations.map((conversation) => {
                     const isSelected = selectedConversation?.id === conversation.id;
+                    const unreadBadge = computeUnreadBadge(
+                      conversation,
+                      selectedConversation?.id ?? null,
+                      readThroughByConvId,
+                    );
 
                     return (
                       <button
@@ -414,9 +450,9 @@ export default function MessagesPage() {
                             <p className="mt-0.5 truncate text-xs text-slate-500">{conversation.phone}</p>
                             <p className="mt-1 truncate text-xs text-slate-500">{conversation.lastMessage}</p>
                           </div>
-                          {conversation.unreadCount > 0 ? (
+                          {unreadBadge > 0 ? (
                             <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-indigo-600 px-1.5 text-[11px] font-semibold text-white">
-                              {conversation.unreadCount}
+                              {unreadBadge}
                             </span>
                           ) : null}
                         </div>
@@ -511,6 +547,7 @@ export default function MessagesPage() {
                 <textarea
                   value={draftMessage}
                   onChange={(event) => setDraftMessage(event.target.value)}
+                  onKeyDown={onDraftKeyDown}
                   disabled={!selectedConversation && !selectedLead}
                   placeholder={selectedConversation || selectedLead ? "Type your message here..." : "Choose a lead to start messaging"}
                   rows={1}
