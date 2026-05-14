@@ -12,24 +12,28 @@ export async function GET(req: NextRequest) {
     const supabase = getSupabaseServerClient();
     const [{ data: logs, error: logsError }, { data: leads, error: leadsError }] = await Promise.all([
       supabase.from("call_logs").select("*").eq("user_id", userId).order("timestamp", { ascending: false }),
-      supabase.from("leads").select("name, phone").eq("user_id", userId).order("created_at", { ascending: false }),
+      supabase.from("leads").select("id, name, phone").eq("user_id", userId).order("created_at", { ascending: false }),
     ]);
     if (logsError) throw logsError;
     if (leadsError) throw leadsError;
 
-    const nameByPhone = new Map<string, string>();
+    const leadByPhone = new Map<string, { id: string; name: string }>();
     for (const lead of leads ?? []) {
       const key = normalizePhone(lead.phone);
-      if (!key || nameByPhone.has(key)) continue;
-      nameByPhone.set(key, lead.name);
+      if (!key || leadByPhone.has(key)) continue;
+      leadByPhone.set(key, { id: lead.id as string, name: lead.name as string });
     }
 
-    const logsWithLeadName = (logs ?? []).map((log) => ({
-      ...log,
-      lead_name: nameByPhone.get(normalizePhone(log.phone)) ?? null,
-    }));
+    const logsWithLead = (logs ?? []).map((log) => {
+      const info = leadByPhone.get(normalizePhone(log.phone));
+      return {
+        ...log,
+        lead_id: info?.id ?? null,
+        lead_name: info?.name ?? null,
+      };
+    });
 
-    return NextResponse.json(logsWithLeadName);
+    return NextResponse.json(logsWithLead);
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Unexpected error" },

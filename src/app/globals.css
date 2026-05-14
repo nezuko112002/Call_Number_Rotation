@@ -17,3 +17,18 @@ body {
   color: var(--foreground);
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
+
+/** Scrollable but no visible scrollbar (wheel / touch / keys still scroll). */
+.scrollbar-hide {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+.scrollbar-hide::-webkit-scrollbar,
+.scrollbar-hide::-webkit-scrollbar-corner {
+  width: 0;
+  height: 0;
+  display: none;
+}
+.scrollbar-hide::-webkit-scrollbar-thumb {
+  background: transparent;
+}

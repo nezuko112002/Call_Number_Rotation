@@ -531,7 +531,10 @@ export default function MessagesPage() {
                   </span>
                 </header>
 
-                <div className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-slate-50 px-5 py-5">
+                <div
+                  className="scrollbar-hide min-h-0 flex-1 space-y-4 overflow-y-auto bg-slate-50 px-5 py-5"
+                  style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+                >
                   {selectedConversation ? (
                     selectedConversation.messages.map((message) => {
                       const isOutbound = message.direction === "outbound";
@@ -601,7 +604,8 @@ export default function MessagesPage() {
                   disabled={!selectedConversation && !selectedLead}
                   placeholder={selectedConversation || selectedLead ? "Type your message here..." : "Choose a lead to start messaging"}
                   rows={1}
-                  className="max-h-28 min-h-10 flex-1 resize-none bg-transparent px-2 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed"
+                  className="scrollbar-hide max-h-28 min-h-10 flex-1 resize-none overflow-y-auto bg-transparent px-2 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed"
+                  style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
                 />
                 <button
                   type="submit"

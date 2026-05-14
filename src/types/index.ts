@@ -49,6 +49,8 @@ export interface CallLogRecord {
   id: string;
   phone: string;
   did: string;
+  /** Matching lead for this user (newest lead with same normalized phone), when any. */
+  lead_id?: string | null;
   lead_name?: string | null;
   direction?: CallDirection;
   result: CallResult;
