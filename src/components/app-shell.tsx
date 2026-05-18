@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
 import { NotepadDrawer } from "@/components/notepad-drawer";
 
-type NavGlyphId = "dashboard" | "didPool" | "leads" | "callbacks" | "connectCall" | "messages" | "callLogs";
+type NavGlyphId = "dashboard" | "didPool" | "leads" | "callbacks" | "connectCall" | "messages" | "callLogs" | "superadmin";
 
 function NavGlyph({ id }: { id: NavGlyphId }) {
   const cls = "h-5 w-5 shrink-0";
@@ -69,6 +69,12 @@ function NavGlyph({ id }: { id: NavGlyphId }) {
           <line x1="8" y1="17" x2="16" y2="17" />
         </svg>
       );
+    case "superadmin":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={cls} aria-hidden>
+          <path d="M12 15v2m-6 4h12a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2zm10-10V7a4 4 0 0 0-8 0v4h8z" />
+        </svg>
+      );
     default:
       return null;
   }
@@ -89,9 +95,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [isSuperadmin, setIsSuperadmin] = useState(false);
   const [isUserLoading, setIsUserLoading] = useState(true);
 
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
+
+  const visibleNavItems = useMemo(() => {
+    if (!isSuperadmin) return navItems;
+    return [...navItems, { href: "/superadmin", label: "Superadmin", glyph: "superadmin" as const }];
+  }, [isSuperadmin]);
 
   useEffect(() => {
     const loadSessionUser = async () => {
@@ -101,15 +113,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         return;
       }
 
+      const sessionUserId = data.session?.user?.id ?? null;
       setUserEmail(data.session?.user?.email ?? null);
+      if (sessionUserId) {
+        const profileRes = await fetch(`/api/auth/me?user_id=${encodeURIComponent(sessionUserId)}`);
+        if (profileRes.ok) {
+          const profile = (await profileRes.json()) as { role?: string };
+          setIsSuperadmin(profile.role === "superadmin");
+        } else {
+          setIsSuperadmin(false);
+        }
+      } else {
+        setIsSuperadmin(false);
+      }
       setIsUserLoading(false);
     };
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUserEmail(session?.user?.email ?? null);
-      setIsUserLoading(false);
+    } = supabase.auth.onAuthStateChange(() => {
+      void loadSessionUser();
     });
 
     void loadSessionUser();
@@ -147,7 +170,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav className="flex gap-2 overflow-x-auto pb-1 md:flex-col md:overflow-visible md:pb-0">
-          {navItems.map((item) => (
+          {visibleNavItems.map((item) => (
             <Link
               key={item.href}
               href={item.href}

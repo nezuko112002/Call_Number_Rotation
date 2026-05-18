@@ -1,3 +1,19 @@
+export type UserRole = "agent" | "admin" | "superadmin";
+
+export interface AppUserRecord {
+  id: string;
+  email: string;
+  role: UserRole;
+  created_at?: string;
+}
+
+export interface AgentDialStatsRow {
+  user_id: string;
+  email: string;
+  dial_count: number;
+  answered_count: number;
+}
+
 export type DidStatus = "active" | "cooldown" | "retired";
 export type LeadStatus = "pending" | "dialed" | "completed";
 export type CallResult =

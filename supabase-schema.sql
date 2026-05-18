@@ -1,5 +1,12 @@
 create extension if not exists "uuid-ossp";
 
+create table if not exists users (
+  id uuid primary key references auth.users (id) on delete cascade,
+  email text not null,
+  role text not null default 'agent' check (role in ('agent', 'admin', 'superadmin')),
+  created_at timestamptz not null default now()
+);
+
 create table if not exists did_pool (
   id uuid primary key default uuid_generate_v4(),
   did text not null unique,
@@ -28,13 +35,20 @@ create table if not exists leads (
 
 create table if not exists call_logs (
   id uuid primary key default uuid_generate_v4(),
+  user_id uuid references users (id) on delete set null,
   phone text not null,
   did text not null,
+  direction text check (direction in ('inbound', 'outbound')),
   result text not null,
   timestamp timestamptz not null default now(),
   duration integer,
+  call_notes text,
   created_at timestamptz not null default now()
 );
+
+create index if not exists call_logs_user_outbound_timestamp_idx
+  on call_logs (user_id, timestamp desc)
+  where direction = 'outbound' and user_id is not null;
 
 create table if not exists notes (
   id uuid primary key default uuid_generate_v4(),
