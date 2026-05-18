@@ -3,6 +3,11 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { AppShell } from "@/components/app-shell";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
+import {
+  loadMessageReadThrough,
+  readThroughForConversation,
+  saveMessageReadThrough,
+} from "@/lib/message-read-through";
 import { conversationLeadKey, normalizePhone } from "@/lib/utils";
 import type { LeadRecord, MessageLogRecord, MessageStatus } from "@/types";
 
@@ -172,10 +177,23 @@ export default function MessagesPage() {
   const canSendMessage = Boolean(userId && draftMessage.trim() && (selectedConversation || selectedLead));
 
   useEffect(() => {
-    const id = selectedConversation?.id;
-    if (!id) return;
-    setReadThroughByConvId((prev) => ({ ...prev, [id]: Date.now() }));
-  }, [selectedConversation?.id]);
+    if (!userId) return;
+    setReadThroughByConvId(loadMessageReadThrough(userId));
+  }, [userId]);
+
+  useEffect(() => {
+    const conv = selectedConversation;
+    if (!conv?.id || !userId) return;
+
+    const readThrough = readThroughForConversation(conv.messages);
+    setReadThroughByConvId((prev) => {
+      const current = prev[conv.id] ?? 0;
+      if (readThrough <= current) return prev;
+      const next = { ...prev, [conv.id]: readThrough };
+      saveMessageReadThrough(userId, next);
+      return next;
+    });
+  }, [selectedConversation, userId]);
 
   const loadMessages = useCallback(
     async (resolvedUserId?: string | null) => {
