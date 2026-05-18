@@ -1,5 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import twilio from "twilio";
+import {
+  buildJoinConferenceTwiml,
+  conferenceNameFromCallSid,
+  createConferenceSession,
+  dialParticipantIntoConference,
+  getPublicBaseUrl,
+  isConferenceCallsEnabled,
+  parseAgentUserIdFromClientIdentity,
+} from "@/lib/twilio-conference";
 import { normalizePhone } from "@/lib/utils";
 
 function getCallerId(fallbackCallerId: string, callerIdFromBody: string | null) {
@@ -48,6 +57,53 @@ export async function POST(req: NextRequest) {
       status: 400,
       headers: { "Content-Type": "text/xml" },
     });
+  }
+
+  const leadId = req.nextUrl.searchParams.get("leadId");
+  const callSid = body.get("CallSid")?.toString() ?? "";
+  const agentUserId = parseAgentUserIdFromClientIdentity(from);
+
+  if (isConferenceCallsEnabled() && !to.startsWith("client:") && callSid && agentUserId) {
+    const baseUrl = getPublicBaseUrl(req.nextUrl.origin);
+    const conferenceName = conferenceNameFromCallSid(callSid);
+
+    try {
+      await createConferenceSession({
+        userId: agentUserId,
+        conferenceName,
+        direction: "outbound",
+        leadPhone: to,
+        callerId,
+        agentIdentity: from?.replace(/^client:/, "") ?? `agent-${agentUserId}`,
+        leadId,
+        agentCallSid: callSid,
+      });
+
+      void dialParticipantIntoConference({
+        baseUrl,
+        to,
+        from: callerId,
+        conferenceName,
+        startConferenceOnEnter: false,
+      }).catch((error) => {
+        console.error("[twilio/voice] failed to dial lead into conference", error);
+      });
+
+      const statusUrl = new URL("/api/twilio/conference/status", baseUrl);
+      statusUrl.searchParams.set("name", conferenceName);
+
+      const twiml = buildJoinConferenceTwiml({
+        conferenceName,
+        startConferenceOnEnter: true,
+        endConferenceOnExit: true,
+        record: true,
+        statusCallback: statusUrl.toString(),
+      });
+
+      return new NextResponse(twiml, { headers: { "Content-Type": "text/xml" } });
+    } catch (error) {
+      console.error("[twilio/voice] conference setup failed, falling back to dial bridge", error);
+    }
   }
 
   const voiceActionUrl = new URL("/api/twilio/voice-status", req.nextUrl.origin);

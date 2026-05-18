@@ -115,3 +115,22 @@ create table if not exists conference_participants (
 
 create index if not exists conference_participants_user_sort_idx
   on conference_participants (user_id, sort_order asc, created_at asc);
+
+create table if not exists call_conference_sessions (
+  id uuid primary key default uuid_generate_v4(),
+  user_id uuid not null,
+  conference_name text not null unique,
+  direction text not null check (direction in ('inbound', 'outbound')),
+  lead_phone text not null,
+  caller_id text not null,
+  agent_identity text,
+  lead_id uuid references leads(id) on delete set null,
+  parent_call_sid text,
+  agent_call_sid text,
+  status text not null default 'active' check (status in ('active', 'ended')),
+  created_at timestamptz not null default now(),
+  ended_at timestamptz
+);
+
+create index if not exists call_conference_sessions_user_active_idx
+  on call_conference_sessions (user_id, status, created_at desc);

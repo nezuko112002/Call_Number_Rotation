@@ -19,6 +19,35 @@ function formatDuration(seconds: number): string {
   return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+type ParticipantDialOutcome = "answered" | "not_answered" | "timeout";
+
+async function waitForParticipantDialOutcome(
+  callSid: string,
+  options?: { pollMs?: number; maxAttempts?: number },
+): Promise<ParticipantDialOutcome> {
+  const pollMs = options?.pollMs ?? 2000;
+  const maxAttempts = options?.maxAttempts ?? 35;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    if (attempt > 0) await sleep(pollMs);
+
+    const res = await fetch(
+      `/api/twilio/conference/participant-status?call_sid=${encodeURIComponent(callSid)}`,
+    );
+    const data = (await res.json()) as { outcome?: string; error?: string };
+    if (!res.ok) continue;
+
+    if (data.outcome === "answered") return "answered";
+    if (data.outcome === "not_answered") return "not_answered";
+  }
+
+  return "timeout";
+}
+
 export default function ConnectCallPage() {
   const { deviceReady, callStatus, activeCall } = useTwilioDeviceContext();
   const supabase = getSupabaseBrowserClient();
@@ -314,23 +343,67 @@ export default function ConnectCallPage() {
 
   const handleConnect = async (row: ConferenceParticipantRecord) => {
     if (!canConnect || connectingIds[row.id] || connectedIdsForActiveCall[row.id]) return;
+    if (!userId) {
+      showToast("warn", "Sign in to connect calls.");
+      return;
+    }
 
     setConnectingIds((prev) => ({ ...prev, [row.id]: true }));
 
-    // UI-only: Twilio conference dial-in will replace this in the integration phase.
-    await new Promise((resolve) => window.setTimeout(resolve, 600));
+    try {
+      const agentCallSid =
+        activeCall?.parameters?.CallSid ??
+        activeCall?.parameters?.callSid ??
+        activeCall?.outboundConnectionId ??
+        undefined;
 
-    setConnectingIds((prev) => {
-      const next = { ...prev };
-      delete next[row.id];
-      return next;
-    });
+      const res = await fetch("/api/twilio/conference/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: userId,
+          participant_id: row.id,
+          agent_call_sid: agentCallSid,
+        }),
+      });
+      const data = (await res.json()) as {
+        error?: string;
+        label?: string;
+        participantCallSid?: string;
+      };
+      if (!res.ok) {
+        showToast("warn", data.error ?? "Could not connect this contact.");
+        return;
+      }
 
-    setConnectedIds((prev) => ({ ...prev, [row.id]: true }));
-    showToast(
-      "warn",
-      `${row.label} — UI ready. Twilio will dial them into your live call in the integration step.`,
-    );
+      const participantCallSid = data.participantCallSid;
+      if (!participantCallSid) {
+        showToast("warn", "Could not track this connection. Try Connect again.");
+        return;
+      }
+
+      const dialOutcome = await waitForParticipantDialOutcome(participantCallSid);
+
+      if (dialOutcome === "answered") {
+        setConnectedIds((prev) => ({ ...prev, [row.id]: true }));
+        showToast("success", `${row.label} joined the call.`);
+        return;
+      }
+
+      const declineMessage =
+        dialOutcome === "timeout"
+          ? `${row.label} did not answer in time. You can try Connect call again.`
+          : `${row.label} did not answer. You can try Connect call again.`;
+      showToast("warn", declineMessage);
+    } catch {
+      showToast("warn", "Could not connect this contact. Check your connection.");
+    } finally {
+      setConnectingIds((prev) => {
+        const next = { ...prev };
+        delete next[row.id];
+        return next;
+      });
+    }
   };
 
   return (
@@ -345,7 +418,7 @@ export default function ConnectCallPage() {
             </p>
           </div>
           <span className="rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
-            Twilio connect next
+            3-way via Twilio Conference
           </span>
         </header>
 

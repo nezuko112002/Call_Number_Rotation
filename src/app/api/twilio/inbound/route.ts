@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import twilio from "twilio";
+import {
+  conferenceNameFromCallSid,
+  createConferenceSession,
+  getPublicBaseUrl,
+  getTwilioClient,
+  isConferenceCallsEnabled,
+} from "@/lib/twilio-conference";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { normalizePhone } from "@/lib/utils";
 
@@ -91,6 +98,80 @@ export async function POST(req: NextRequest) {
     response.say("The number you reached is not currently available.");
     response.hangup();
     return new NextResponse(response.toString(), { headers: { "Content-Type": "text/xml" } });
+  }
+
+  const parentCallSid = form?.get("CallSid")?.toString() ?? "";
+
+  if (isConferenceCallsEnabled() && parentCallSid) {
+    const baseUrl = getPublicBaseUrl(req.nextUrl.origin);
+    const conferenceName = conferenceNameFromCallSid(parentCallSid);
+
+    try {
+      await createConferenceSession({
+        userId,
+        conferenceName,
+        direction: "inbound",
+        leadPhone,
+        callerId: did,
+        agentIdentity: `agent-${userId}`,
+        parentCallSid,
+      });
+
+      if (retry > 0) {
+        response.say("Please hold while we connect you to your agent.");
+      }
+
+      const waitUrl = new URL("/api/twilio/conference/wait", baseUrl);
+      const conferenceStatusUrl = new URL("/api/twilio/conference/status", baseUrl);
+      conferenceStatusUrl.searchParams.set("name", conferenceName);
+
+      const dial = response.dial({ callerId: did });
+      dial.conference(
+        {
+          startConferenceOnEnter: false,
+          endConferenceOnExit: false,
+          waitUrl: waitUrl.toString(),
+          statusCallback: conferenceStatusUrl.toString(),
+          statusCallbackEvent: ["end"],
+          beep: "false",
+        },
+        conferenceName,
+      );
+
+      const agentStatusUrl = new URL("/api/twilio/conference/agent-status", baseUrl);
+      agentStatusUrl.searchParams.set("userId", userId);
+      agentStatusUrl.searchParams.set("leadPhone", leadPhone);
+      agentStatusUrl.searchParams.set("did", did);
+      agentStatusUrl.searchParams.set("conferenceName", conferenceName);
+      agentStatusUrl.searchParams.set("retry", String(retry));
+      agentStatusUrl.searchParams.set("maxRetry", String(HOLD_RETRY_LIMIT));
+
+      const joinUrl = new URL("/api/twilio/conference/join", baseUrl);
+      joinUrl.searchParams.set("name", conferenceName);
+      joinUrl.searchParams.set("callerId", did);
+      joinUrl.searchParams.set("moderator", "true");
+
+      const client = getTwilioClient();
+      void client.calls
+        .create({
+          to: `client:agent-${userId}`,
+          from: did,
+          url: joinUrl.toString(),
+          method: "POST",
+          statusCallback: agentStatusUrl.toString(),
+          statusCallbackMethod: "POST",
+          statusCallbackEvent: ["completed", "busy", "no-answer", "failed", "canceled"],
+        })
+        .catch((error) => {
+          console.error("[twilio/inbound] failed to dial agent into conference", error);
+        });
+
+      return new NextResponse(response.toString(), {
+        headers: { "Content-Type": "text/xml" },
+      });
+    } catch (error) {
+      console.error("[twilio/inbound] conference setup failed, falling back to dial bridge", error);
+    }
   }
 
   if (retry > 0) {
