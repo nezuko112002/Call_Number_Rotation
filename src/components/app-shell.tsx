@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
 import { NotepadDrawer } from "@/components/notepad-drawer";
 
-type NavGlyphId = "dashboard" | "didPool" | "leads" | "callbacks" | "messages" | "callLogs";
+type NavGlyphId = "dashboard" | "didPool" | "leads" | "callbacks" | "connectCall" | "messages" | "callLogs";
 
 function NavGlyph({ id }: { id: NavGlyphId }) {
   const cls = "h-5 w-5 shrink-0";
@@ -45,6 +45,15 @@ function NavGlyph({ id }: { id: NavGlyphId }) {
           <path d="M12 14v3l2 1" />
         </svg>
       );
+    case "connectCall":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={cls} aria-hidden>
+          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+          <circle cx="9" cy="7" r="4" />
+          <line x1="19" y1="8" x2="19" y2="14" />
+          <line x1="22" y1="11" x2="16" y2="11" />
+        </svg>
+      );
     case "messages":
       return (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={cls} aria-hidden>
@@ -70,6 +79,7 @@ const navItems: { href: string; label: string; glyph: NavGlyphId }[] = [
   { href: "/did-pool", label: "DID Pool", glyph: "didPool" },
   { href: "/leads", label: "Leads", glyph: "leads" },
   { href: "/callbacks", label: "Callbacks", glyph: "callbacks" },
+  { href: "/connect-call", label: "Connect Call", glyph: "connectCall" },
   { href: "/messages", label: "Messages", glyph: "messages" },
   { href: "/call-logs", label: "Call Logs", glyph: "callLogs" },
 ];

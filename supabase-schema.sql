@@ -99,3 +99,19 @@ create table if not exists user_messaging_preferences (
   default_messaging_did text,
   updated_at timestamptz not null default now()
 );
+
+-- Saved numbers for Connect Call (3-way / conference add participant).
+create table if not exists conference_participants (
+  id uuid primary key default uuid_generate_v4(),
+  user_id uuid not null,
+  label text not null,
+  phone text not null,
+  normalized_phone text not null,
+  sort_order integer not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (user_id, normalized_phone)
+);
+
+create index if not exists conference_participants_user_sort_idx
+  on conference_participants (user_id, sort_order asc, created_at asc);

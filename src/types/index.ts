@@ -83,3 +83,14 @@ export interface NoteRecord {
   updated_at: string;
   created_at?: string;
 }
+
+/** Saved third-party line to dial into an active conference (DB-backed in a later phase). */
+export interface ConferenceParticipantRecord {
+  id: string;
+  user_id: string;
+  label: string;
+  phone: string;
+  sort_order: number;
+  created_at?: string;
+  updated_at?: string;
+}
