@@ -7,7 +7,8 @@ import {
   dialParticipantIntoConference,
   getPublicBaseUrl,
   isConferenceCallsEnabled,
-  parseAgentUserIdFromClientIdentity,
+  resolveAgentIdentityFromVoiceRequest,
+  resolveAgentUserIdFromVoiceRequest,
 } from "@/lib/twilio-conference";
 import { normalizePhone } from "@/lib/utils";
 
@@ -22,6 +23,7 @@ export async function POST(req: NextRequest) {
   const callerIdFromQuery = req.nextUrl.searchParams.get("callerId");
   const bodyTo = body.get("To")?.toString() ?? "";
   const to = toFromQuery ?? bodyTo;
+  const leadPhone = toFromQuery?.trim() || (bodyTo.startsWith("client:") ? "" : bodyTo).trim();
   const callerIdFromBody = callerIdFromQuery ?? body.get("CallerId")?.toString() ?? null;
   const from = body.get("From")?.toString() ?? null;
   const defaultCallerId = process.env.TWILIO_DEFAULT_CALLER_ID ?? "";
@@ -60,10 +62,15 @@ export async function POST(req: NextRequest) {
   }
 
   const leadId = req.nextUrl.searchParams.get("leadId");
+  const userIdFromQuery = req.nextUrl.searchParams.get("userId");
   const callSid = body.get("CallSid")?.toString() ?? "";
-  const agentUserId = parseAgentUserIdFromClientIdentity(from);
+  const agentUserId = resolveAgentUserIdFromVoiceRequest({
+    from,
+    to: bodyTo,
+    userIdFromQuery,
+  });
 
-  if (isConferenceCallsEnabled() && !to.startsWith("client:") && callSid && agentUserId) {
+  if (isConferenceCallsEnabled() && leadPhone && !leadPhone.startsWith("client:") && callSid && agentUserId) {
     const baseUrl = getPublicBaseUrl(req.nextUrl.origin);
     const conferenceName = conferenceNameFromCallSid(callSid);
 
@@ -72,16 +79,16 @@ export async function POST(req: NextRequest) {
         userId: agentUserId,
         conferenceName,
         direction: "outbound",
-        leadPhone: to,
+        leadPhone,
         callerId,
-        agentIdentity: from?.replace(/^client:/, "") ?? `agent-${agentUserId}`,
+        agentIdentity: resolveAgentIdentityFromVoiceRequest({ from, to: bodyTo, userId: agentUserId }),
         leadId,
         agentCallSid: callSid,
       });
 
       void dialParticipantIntoConference({
         baseUrl,
-        to,
+        to: leadPhone,
         from: callerId,
         conferenceName,
         startConferenceOnEnter: false,

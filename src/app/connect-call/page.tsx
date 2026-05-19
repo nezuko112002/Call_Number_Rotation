@@ -82,6 +82,11 @@ export default function ConnectCallPage() {
   const [toast, setToast] = useState<{ tone: "success" | "warn"; message: string } | null>(null);
   const [conferenceReady, setConferenceReady] = useState<boolean | null>(null);
   const [conferenceHint, setConferenceHint] = useState("");
+  const [serverConfig, setServerConfig] = useState<{
+    conferenceCallsEnabled: boolean;
+    webhookBaseUrl: string;
+    webhookMatchesApp: boolean;
+  } | null>(null);
 
   const canConnect = callStatus === "in-progress";
   const incomingCaller =
@@ -166,6 +171,26 @@ export default function ConnectCallPage() {
     const t = window.setTimeout(() => setToast(null), 4000);
     return () => window.clearTimeout(t);
   }, [toast]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch("/api/twilio/conference/config")
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return;
+        setServerConfig({
+          conferenceCallsEnabled: Boolean(data.conferenceCallsEnabled),
+          webhookBaseUrl: String(data.webhookBaseUrl ?? ""),
+          webhookMatchesApp: Boolean(data.webhookMatchesApp),
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setServerConfig(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (callStatus !== "in-progress") return;
@@ -504,10 +529,24 @@ export default function ConnectCallPage() {
           </div>
         </section>
 
+        {serverConfig && !serverConfig.conferenceCallsEnabled ? (
+          <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
+            <p className="font-semibold">Conference mode is off on this server</p>
+            <p className="mt-1">
+              Set <code className="rounded bg-rose-100 px-1">TWILIO_CONFERENCE_CALLS=true</code> on{" "}
+              {serverConfig.webhookBaseUrl || "your deployed host"}, redeploy, then start a new call.
+            </p>
+          </div>
+        ) : null}
+
         {callStatus === "in-progress" && conferenceReady === false && conferenceHint ? (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
             <p className="font-semibold">Connect is not available on this call</p>
             <p className="mt-1">{conferenceHint}</p>
+            <p className="mt-2 text-xs text-amber-800">
+              Hang up and place a <strong>new</strong> call from Leads/Callbacks after deploying the latest code.
+              Calls already connected stay on the old 1:1 line.
+            </p>
           </div>
         ) : null}
 

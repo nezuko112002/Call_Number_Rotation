@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
     const call = await client.calls.create({
       from: callerId,
       to: `client:${agentIdentity}`,
-      url: `${baseUrl}/api/twilio/voice?to=${encodeURIComponent(to)}&callerId=${encodeURIComponent(callerId)}&leadId=${encodeURIComponent(leadId)}`,
+      url: `${baseUrl}/api/twilio/voice?to=${encodeURIComponent(to)}&callerId=${encodeURIComponent(callerId)}&leadId=${encodeURIComponent(leadId)}&userId=${encodeURIComponent(userId)}`,
       method: "POST",
       statusCallback: callbackUrl.toString(),
       statusCallbackMethod: "POST",

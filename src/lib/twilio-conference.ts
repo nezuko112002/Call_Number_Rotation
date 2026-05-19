@@ -38,6 +38,65 @@ export function parseAgentUserIdFromClientIdentity(identity: string | null | und
   return null;
 }
 
+/** Resolve agent user id from Twilio voice webhook fields (outbound dials use To=client:agent-…, From=DID). */
+export function resolveAgentUserIdFromVoiceRequest(input: {
+  from?: string | null;
+  to?: string | null;
+  userIdFromQuery?: string | null;
+}): string | null {
+  const fromQuery = input.userIdFromQuery?.trim();
+  if (fromQuery) return fromQuery;
+
+  return (
+    parseAgentUserIdFromClientIdentity(input.from) ??
+    parseAgentUserIdFromClientIdentity(input.to) ??
+    null
+  );
+}
+
+export function resolveAgentIdentityFromVoiceRequest(input: {
+  from?: string | null;
+  to?: string | null;
+  userId: string;
+}): string {
+  const fromIdentity = input.from?.trim();
+  if (fromIdentity?.startsWith("client:")) {
+    return fromIdentity.replace(/^client:/, "");
+  }
+  const toIdentity = input.to?.trim();
+  if (toIdentity?.startsWith("client:")) {
+    return toIdentity.replace(/^client:/, "");
+  }
+  return `agent-${input.userId}`;
+}
+
+async function findLiveConferenceForAgentCall(agentCallSid: string) {
+  const client = getTwilioClient();
+  const expectedName = conferenceNameFromCallSid(agentCallSid);
+
+  const byName = await client.conferences.list({
+    friendlyName: expectedName,
+    status: "in-progress",
+    limit: 1,
+  });
+  if (byName[0]) {
+    return { conference: byName[0], conferenceName: expectedName };
+  }
+
+  const inProgress = await client.conferences.list({ status: "in-progress", limit: 50 });
+  for (const conference of inProgress) {
+    const participants = await client.conferences(conference.sid).participants.list();
+    if (participants.some((p) => p.callSid === agentCallSid)) {
+      return {
+        conference,
+        conferenceName: conference.friendlyName ?? expectedName,
+      };
+    }
+  }
+
+  return null;
+}
+
 export async function createConferenceSession(input: {
   userId: string;
   conferenceName: string;
@@ -140,24 +199,21 @@ export async function resolveConferenceSessionForConnect(input: {
     };
   }
 
-  const conferenceName = conferenceNameFromCallSid(agentCallSid);
   const client = getTwilioClient();
+  const live = await findLiveConferenceForAgentCall(agentCallSid);
 
-  const conferences = await client.conferences.list({
-    friendlyName: conferenceName,
-    status: "in-progress",
-    limit: 1,
-  });
-  const liveConference = conferences[0];
-
-  if (!liveConference) {
+  if (!live) {
     return {
       ok: false,
       code: "no_live_conference",
-      message:
-        "This call is not on a conference line (likely started before conference mode was enabled). Hang up, confirm TWILIO_CONFERENCE_CALLS=true on your deployed server, then start a new call from Leads or Callbacks.",
+      message: isConferenceCallsEnabled()
+        ? "This call is using the legacy 1:1 line, not a conference. Hang up and place a new call from Leads or Callbacks (after your latest deploy)."
+        : "Conference calling is off on the voice webhook server. Set TWILIO_CONFERENCE_CALLS=true on Netlify, redeploy, then start a new call.",
     };
   }
+
+  const liveConference = live.conference;
+  const conferenceName = live.conferenceName;
 
   let leadPhone = "";
   let callerId = "";
