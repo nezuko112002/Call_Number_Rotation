@@ -1,4 +1,5 @@
 import twilio from "twilio";
+import { buildRecordingStatusCallbackUrl } from "@/lib/call-recording";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { normalizePhone } from "@/lib/utils";
 
@@ -10,6 +11,56 @@ export function isConferenceCallsEnabled(): boolean {
 export function conferenceNameFromCallSid(callSid: string): string {
   const safe = callSid.replace(/[^A-Za-z0-9]/g, "");
   return `cnf-${safe}`;
+}
+
+/** Twilio Client identity for superadmin QA listen-in (browser). */
+export function superadminClientIdentity(userId: string): string {
+  return `superadmin-${userId}`;
+}
+
+export async function findInProgressConferenceSid(conferenceName: string): Promise<string | null> {
+  const client = getTwilioClient();
+  const list = await client.conferences.list({
+    friendlyName: conferenceName,
+    status: "in-progress",
+    limit: 1,
+  });
+  return list[0]?.sid ?? null;
+}
+
+/** Dials a muted superadmin browser client into an active conference (silent QA). */
+export async function dialQaMonitorIntoConference(input: {
+  conferenceName: string;
+  supervisorUserId: string;
+  callerId: string;
+}): Promise<{ callSid: string }> {
+  const conferenceSid = await findInProgressConferenceSid(input.conferenceName);
+  if (!conferenceSid) {
+    throw new Error("This call is no longer active on Twilio.");
+  }
+
+  const client = getTwilioClient();
+  const from = normalizePhone(input.callerId);
+  if (!from) {
+    throw new Error("Conference caller ID is missing.");
+  }
+
+  const participant = await client.conferences(conferenceSid).participants.create({
+    from,
+    to: `client:${superadminClientIdentity(input.supervisorUserId)}`,
+    muted: true,
+    beep: "false",
+    startConferenceOnEnter: false,
+    endConferenceOnExit: false,
+    label: "qa-monitor",
+  });
+
+  const callSid = participant.callSid;
+  if (!callSid) {
+    throw new Error("Twilio did not return a monitor call SID.");
+  }
+
+  return { callSid };
 }
 
 export function getTwilioClient() {
@@ -389,13 +440,13 @@ export function buildJoinConferenceTwiml(options: {
   record?: boolean;
   waitUrl?: string;
   statusCallback?: string;
+  recordingStatusCallback?: string;
 }) {
   const response = new twilio.twiml.VoiceResponse();
   const dialAttrs: Record<string, string | boolean> = {};
   if (options.callerId) dialAttrs.callerId = options.callerId;
-  if (options.record) dialAttrs.record = "record-from-ringing";
 
-  const conferenceAttrs: Record<string, string | boolean> = {
+  const conferenceAttrs: Record<string, string | boolean | string[]> = {
     startConferenceOnEnter: options.startConferenceOnEnter,
     endConferenceOnExit: options.endConferenceOnExit,
     beep: "false",
@@ -404,6 +455,18 @@ export function buildJoinConferenceTwiml(options: {
   if (options.statusCallback) {
     conferenceAttrs.statusCallback = options.statusCallback;
     conferenceAttrs.statusCallbackEvent = "end leave";
+  }
+  if (options.record) {
+    conferenceAttrs.record = "record-from-start";
+    const recordingCallback =
+      options.recordingStatusCallback ??
+      buildRecordingStatusCallbackUrl(
+        process.env.NEXT_PUBLIC_BASE_URL?.trim() || "http://localhost:3000",
+        options.conferenceName,
+      );
+    conferenceAttrs.recordingStatusCallback = recordingCallback;
+    conferenceAttrs.recordingStatusCallbackMethod = "POST";
+    conferenceAttrs.recordingStatusCallbackEvent = ["completed"];
   }
 
   const dial = response.dial(dialAttrs);

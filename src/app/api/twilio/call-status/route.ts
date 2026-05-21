@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { mergePendingRecordingOntoCallLog } from "@/lib/call-recording";
 import { updateDidAfterCall } from "@/lib/db";
 import { getSupabaseServerClient } from "@/lib/supabase";
+import { conferenceNameFromCallSid } from "@/lib/twilio-conference";
 import { normalizePhone } from "@/lib/utils";
 import type { CallResult } from "@/types";
 
@@ -33,18 +35,29 @@ export async function POST(req: NextRequest) {
     const normalizedTo = normalizePhone(to);
     const normalizedDid = normalizePhone(callerId);
     const timestamp = new Date().toISOString();
+    const agentCallSid = String(form.get("CallSid") ?? "").trim();
+    const conferenceName = agentCallSid ? conferenceNameFromCallSid(agentCallSid) : null;
 
     const supabase = getSupabaseServerClient();
-    const { error: logError } = await supabase.from("call_logs").insert({
-      phone: normalizedTo,
-      did: normalizedDid,
-      direction: "outbound",
-      result,
-      timestamp,
-      duration: safeDuration,
-      user_id: userId,
-    });
+    const { data: insertedLog, error: logError } = await supabase
+      .from("call_logs")
+      .insert({
+        phone: normalizedTo,
+        did: normalizedDid,
+        direction: "outbound",
+        result,
+        timestamp,
+        duration: safeDuration,
+        user_id: userId,
+        conference_name: conferenceName,
+      })
+      .select("id")
+      .single();
     if (logError) throw logError;
+
+    if (insertedLog?.id && conferenceName) {
+      await mergePendingRecordingOntoCallLog(conferenceName, insertedLog.id as string);
+    }
 
     const { error: leadError } = await supabase
       .from("leads")

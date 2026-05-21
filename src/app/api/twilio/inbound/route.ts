@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import twilio from "twilio";
+import { buildRecordingStatusCallbackUrl } from "@/lib/call-recording";
 import {
   conferenceNameFromCallSid,
   createConferenceSession,
@@ -134,6 +135,10 @@ export async function POST(req: NextRequest) {
           statusCallback: conferenceStatusUrl.toString(),
           statusCallbackEvent: ["end", "leave"],
           beep: "false",
+          record: "record-from-start",
+          recordingStatusCallback: buildRecordingStatusCallbackUrl(baseUrl, conferenceName),
+          recordingStatusCallbackMethod: "POST",
+          recordingStatusCallbackEvent: ["completed"],
         },
         conferenceName,
       );

@@ -14,6 +14,17 @@ export interface AgentDialStatsRow {
   answered_count: number;
 }
 
+export interface ActiveConferenceSessionRow {
+  id: string;
+  user_id: string;
+  agent_email: string;
+  conference_name: string;
+  direction: CallDirection;
+  lead_phone: string;
+  caller_id: string;
+  created_at: string;
+}
+
 export type DidStatus = "active" | "cooldown" | "retired";
 export type LeadStatus = "pending" | "dialed" | "completed";
 export type CallResult =
@@ -73,7 +84,33 @@ export interface CallLogRecord {
   duration: number | null;
   timestamp: string;
   call_notes?: string | null;
+  conference_name?: string | null;
+  twilio_recording_sid?: string | null;
+  recording_url?: string | null;
   created_at?: string;
+}
+
+/** Superadmin call log row (includes calls without recordings). */
+export interface SuperadminCallHistoryRow extends CallLogRecord {
+  user_id: string;
+  agent_email: string;
+  has_recording: boolean;
+}
+
+/** Saved Twilio recording linked to a call_logs row — for replay in superadmin. */
+export interface SuperadminCallRecordingRow {
+  id: string;
+  user_id: string;
+  agent_email: string;
+  lead_name: string | null;
+  phone: string;
+  did: string;
+  direction?: CallDirection;
+  result: CallResult;
+  duration: number | null;
+  timestamp: string;
+  call_notes?: string | null;
+  twilio_recording_sid: string;
 }
 
 export interface MessageLogRecord {

@@ -5,7 +5,16 @@ import { Call, Device } from "@twilio/voice-sdk";
 
 type TwilioCallStatus = "idle" | "registering" | "ready" | "ringing" | "in-progress" | "completed" | "error";
 
-export function useTwilioDevice(identityHint?: string) {
+export interface UseTwilioDeviceOptions {
+  /** Auto-accept incoming client legs (click-to-call, QA listen). */
+  autoAcceptIncoming?: boolean;
+  /** Mute microphone when an auto-accepted or manually accepted call connects. */
+  muteOnConnect?: boolean;
+}
+
+export function useTwilioDevice(identityHint?: string, options?: UseTwilioDeviceOptions) {
+  const autoAcceptIncoming = options?.autoAcceptIncoming ?? false;
+  const muteOnConnect = options?.muteOnConnect ?? false;
   const [device, setDevice] = useState<Device | null>(null);
   const [deviceReady, setDeviceReady] = useState(false);
   const [identity, setIdentity] = useState<string>("");
@@ -68,6 +77,9 @@ export function useTwilioDevice(identityHint?: string) {
 
           incomingCall.on("accept", () => {
             if (isCancelled) return;
+            if (muteOnConnect) {
+              incomingCall.mute(true);
+            }
             setCallStatus("in-progress");
           });
 
@@ -92,7 +104,9 @@ export function useTwilioDevice(identityHint?: string) {
           });
 
           const expectUntil = outboundClientLegExpectUntilMsRef.current;
-          if (expectUntil > 0 && Date.now() < expectUntil) {
+          const shouldAutoAccept =
+            (expectUntil > 0 && Date.now() < expectUntil) || autoAcceptIncoming;
+          if (shouldAutoAccept) {
             outboundClientLegExpectUntilMsRef.current = 0;
             if (acceptedIncomingCallRef.current !== incomingCall) {
               acceptedIncomingCallRef.current = incomingCall;
@@ -140,7 +154,7 @@ export function useTwilioDevice(identityHint?: string) {
       setDeviceReady(false);
       setCallStatus("idle");
     };
-  }, [resolvedIdentity]);
+  }, [autoAcceptIncoming, muteOnConnect, resolvedIdentity]);
 
   useEffect(() => {
     if (!activeCall) {

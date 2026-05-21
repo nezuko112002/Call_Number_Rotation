@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import twilio from "twilio";
+import { buildRecordingStatusCallbackUrl } from "@/lib/call-recording";
 import {
   buildJoinConferenceTwiml,
   conferenceNameFromCallSid,
@@ -110,6 +111,7 @@ export async function POST(req: NextRequest) {
         endConferenceOnExit: true,
         record: true,
         statusCallback: statusUrl.toString(),
+        recordingStatusCallback: buildRecordingStatusCallbackUrl(baseUrl, conferenceName),
       });
 
       return new NextResponse(twiml, { headers: { "Content-Type": "text/xml" } });

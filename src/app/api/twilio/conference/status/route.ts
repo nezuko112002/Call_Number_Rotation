@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { mergePendingRecordingOntoCallLog } from "@/lib/call-recording";
 import { updateDidAfterCall } from "@/lib/db";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import {
@@ -39,15 +40,26 @@ export async function POST(req: NextRequest) {
     const result: CallResult = safeDuration > 0 ? "answered" : "no_answer";
 
     const supabase = getSupabaseServerClient();
-    await supabase.from("call_logs").insert({
-      phone: session.lead_phone,
-      did: session.caller_id,
-      direction: "inbound",
-      result,
-      duration: safeDuration,
-      timestamp: new Date().toISOString(),
-      user_id: session.user_id,
-    });
+    const { data: insertedLog, error: logError } = await supabase
+      .from("call_logs")
+      .insert({
+        phone: session.lead_phone,
+        did: session.caller_id,
+        direction: "inbound",
+        result,
+        duration: safeDuration,
+        timestamp: new Date().toISOString(),
+        user_id: session.user_id,
+        conference_name: conferenceName,
+      })
+      .select("id")
+      .single();
+    if (logError) throw logError;
+
+    if (insertedLog?.id) {
+      await mergePendingRecordingOntoCallLog(conferenceName, insertedLog.id as string);
+    }
+
     await updateDidAfterCall(session.caller_id, result, session.user_id);
   }
 
