@@ -65,9 +65,13 @@ export default function SuperadminLiveCallsPage() {
   const [listenStartedAt, setListenStartedAt] = useState<number | null>(null);
   const [listenSeconds, setListenSeconds] = useState(0);
 
-  const isListening = callStatus === "in-progress" && listeningConference !== null;
+  const monitorLegActive =
+    activeCall !== null || callStatus === "ringing" || callStatus === "in-progress";
+  const isListening =
+    listeningConference !== null && monitorLegActive && callStatus === "in-progress";
   const isConnecting =
-    connectingConference !== null || (callStatus === "ringing" && listeningConference !== null);
+    connectingConference !== null ||
+    (listeningConference !== null && callStatus === "ringing");
 
   useEffect(() => {
     const bootstrap = async () => {
@@ -154,12 +158,14 @@ export default function SuperadminLiveCallsPage() {
 
   useEffect(() => {
     const timerId = window.setTimeout(() => {
-      if (
-        listeningConference &&
-        (callStatus === "ready" || callStatus === "completed" || callStatus === "idle")
-      ) {
+      // Do not clear while waiting for the monitor leg (device stays "ready" until incoming rings).
+      const legEnded =
+        !activeCall &&
+        connectingConference === null &&
+        (callStatus === "ready" || callStatus === "completed" || callStatus === "idle");
+
+      if (listeningConference && legEnded) {
         setListeningConference(null);
-        setConnectingConference(null);
         setListenStartedAt(null);
       }
       if (callStatus === "in-progress" && listeningConference) {
@@ -168,7 +174,7 @@ export default function SuperadminLiveCallsPage() {
       }
     }, 0);
     return () => window.clearTimeout(timerId);
-  }, [callStatus, listeningConference]);
+  }, [activeCall, callStatus, connectingConference, listeningConference]);
 
   const clearListenState = useCallback(() => {
     setListeningConference(null);
@@ -176,7 +182,7 @@ export default function SuperadminLiveCallsPage() {
     setListenStartedAt(null);
   }, []);
 
-  const handleCancelListen = useCallback(() => {
+  const handleStopListening = useCallback(() => {
     if (activeCall && callStatus === "ringing") {
       rejectIncomingCall();
     } else {
@@ -191,7 +197,7 @@ export default function SuperadminLiveCallsPage() {
       if (isListening || isConnecting) return;
 
       if (listeningConference && listeningConference !== row.conference_name) {
-        handleCancelListen();
+        handleStopListening();
       }
 
       setConnectingConference(row.conference_name);
@@ -223,7 +229,7 @@ export default function SuperadminLiveCallsPage() {
     },
     [
       deviceReady,
-      handleCancelListen,
+      handleStopListening,
       isConnecting,
       isListening,
       listeningConference,
@@ -283,10 +289,10 @@ export default function SuperadminLiveCallsPage() {
           {isListening || isConnecting ? (
             <button
               type="button"
-              onClick={handleCancelListen}
+              onClick={handleStopListening}
               className="mt-4 rounded-lg border border-rose-500/50 bg-rose-600 px-4 py-2 text-sm font-medium text-white hover:bg-rose-500"
             >
-              Cancel listen
+              Stop listening
             </button>
           ) : null}
         </div>
@@ -312,10 +318,18 @@ export default function SuperadminLiveCallsPage() {
             {isLoadingCalls ? "Refreshing..." : "Refresh now"}
           </button>
           {calls.length > 0 ? (
-            <InCallBadge />
+            <span className="text-xs font-medium text-slate-400">
+              {calls.length} active {calls.length === 1 ? "call" : "calls"}
+            </span>
           ) : (
             <span className="text-xs font-medium text-slate-500">No agents in a call right now</span>
           )}
+          {isListening ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-950/50 px-2.5 py-1 text-xs font-semibold text-emerald-200">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" aria-hidden />
+              You are listening
+            </span>
+          ) : null}
           <p className="text-xs text-slate-500">Auto-refreshes every 5 seconds.</p>
         </div>
 
@@ -345,14 +359,15 @@ export default function SuperadminLiveCallsPage() {
                   const isActiveRow = listeningConference === row.conference_name;
                   const isRowListening = isActiveRow && isListening;
                   const isRowConnecting = isActiveRow && isConnecting && !isRowListening;
-                  const anotherRowActive =
+                  const monitorBusyElsewhere =
                     (isConnecting || isListening) && listeningConference !== null && !isActiveRow;
-                  const listenDisabled = !deviceReady || !conferenceEnabled || anotherRowActive;
+                  const listenDisabled =
+                    !deviceReady || !conferenceEnabled || monitorBusyElsewhere || isRowConnecting;
 
                   return (
                     <tr
                       key={row.id}
-                      className={`border-t border-slate-800/80 ${isActiveRow && (isRowListening || isRowConnecting) ? "bg-violet-950/20" : ""}`}
+                      className={`border-t border-slate-800/80 ${isActiveRow && (isRowListening || isRowConnecting) ? "bg-violet-950/30" : ""}`}
                     >
                       <td className="px-4 py-3">
                         <InCallBadge />
@@ -364,30 +379,26 @@ export default function SuperadminLiveCallsPage() {
                         {new Date(row.created_at).toLocaleTimeString()}
                       </td>
                       <td className="px-4 py-3">
-                        {isRowListening || isRowConnecting ? (
+                        {isRowListening ? (
+                          <button
+                            type="button"
+                            onClick={handleStopListening}
+                            className="rounded-lg border border-rose-500/50 bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rose-500"
+                          >
+                            Stop listening
+                          </button>
+                        ) : isRowConnecting ? (
                           <div className="flex flex-wrap items-center gap-2">
-                            <span
-                              className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold ring-1 ${
-                                isRowListening
-                                  ? "bg-emerald-500/15 text-emerald-300 ring-emerald-500/40"
-                                  : "bg-amber-500/15 text-amber-200 ring-amber-500/40"
-                              }`}
-                            >
-                              {isRowListening ? (
-                                <>
-                                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" aria-hidden />
-                                  Listening
-                                </>
-                              ) : (
-                                <>
-                                  <span className="h-3 w-3 animate-spin rounded-full border-2 border-amber-400/30 border-t-amber-300" aria-hidden />
-                                  Connecting…
-                                </>
-                              )}
+                            <span className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500/15 px-2.5 py-1.5 text-xs font-semibold text-amber-200 ring-1 ring-amber-500/40">
+                              <span
+                                className="h-3 w-3 animate-spin rounded-full border-2 border-amber-400/30 border-t-amber-300"
+                                aria-hidden
+                              />
+                              Connecting…
                             </span>
                             <button
                               type="button"
-                              onClick={handleCancelListen}
+                              onClick={handleStopListening}
                               className="rounded-lg border border-slate-600 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-rose-500/50 hover:bg-rose-600 hover:text-white"
                             >
                               Cancel
