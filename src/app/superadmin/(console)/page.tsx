@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { SuperadminShell } from "@/components/superadmin-shell";
 import { datetimeLocalToIso, startOfTodayLocal, toDatetimeLocalValue } from "@/lib/shift-datetime";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
 import type { AgentDialStatsRow, AppUserRecord } from "@/types";
@@ -117,25 +116,18 @@ export default function SuperadminPage() {
   };
 
   if (!profile && isLoading) {
-    return (
-      <SuperadminShell>
-        <p className="text-sm text-slate-400">Loading superadmin console...</p>
-      </SuperadminShell>
-    );
+    return <p className="text-sm text-slate-400">Loading superadmin console...</p>;
   }
 
   if (profile?.role !== "superadmin") {
     return (
-      <SuperadminShell>
-        <div className="rounded-xl border border-rose-500/40 bg-rose-950/40 p-4 text-sm text-rose-200">
-          {error || "Superadmin access required."}
-        </div>
-      </SuperadminShell>
+      <div className="rounded-xl border border-rose-500/40 bg-rose-950/40 p-4 text-sm text-rose-200">
+        {error || "Superadmin access required."}
+      </div>
     );
   }
 
   return (
-    <SuperadminShell>
       <section className="space-y-6">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight text-white">Agent dial stats</h1>
@@ -282,6 +274,5 @@ export default function SuperadminPage() {
           </p>
         ) : null}
       </section>
-    </SuperadminShell>
   );
 }

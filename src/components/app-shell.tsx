@@ -3,10 +3,29 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { SUPERADMIN_HOME_PATH } from "@/lib/auth-routes";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
 import { NotepadDrawer } from "@/components/notepad-drawer";
 
-type NavGlyphId = "dashboard" | "didPool" | "leads" | "callbacks" | "connectCall" | "messages" | "callLogs" | "superadmin";
+function SuperadminConsoleGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-5 w-5 shrink-0"
+      aria-hidden
+    >
+      <line x1="5" y1="12" x2="19" y2="12" />
+      <polyline points="12 5 19 12 12 19" />
+    </svg>
+  );
+}
+
+type NavGlyphId = "dashboard" | "didPool" | "leads" | "callbacks" | "connectCall" | "messages" | "callLogs";
 
 function NavGlyph({ id }: { id: NavGlyphId }) {
   const cls = "h-5 w-5 shrink-0";
@@ -69,12 +88,6 @@ function NavGlyph({ id }: { id: NavGlyphId }) {
           <line x1="8" y1="17" x2="16" y2="17" />
         </svg>
       );
-    case "superadmin":
-      return (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={cls} aria-hidden>
-          <path d="M12 15v2m-6 4h12a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2zm10-10V7a4 4 0 0 0-8 0v4h8z" />
-        </svg>
-      );
     default:
       return null;
   }
@@ -99,11 +112,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [isUserLoading, setIsUserLoading] = useState(true);
 
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
-
-  const visibleNavItems = useMemo(() => {
-    if (!isSuperadmin) return navItems;
-    return [...navItems, { href: "/superadmin", label: "Superadmin", glyph: "superadmin" as const }];
-  }, [isSuperadmin]);
 
   useEffect(() => {
     const loadSessionUser = async () => {
@@ -153,6 +161,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     }
 
     setUserEmail(null);
+    setIsSuperadmin(false);
     setIsUserLoading(false);
     router.replace("/login");
     router.refresh();
@@ -176,7 +185,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav className="flex gap-2 overflow-x-auto pb-1 md:flex-col md:overflow-visible md:pb-0">
-          {visibleNavItems.map((item) => (
+          {navItems.map((item) => (
             <Link
               key={item.href}
               href={item.href}
@@ -192,7 +201,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           ))}
         </nav>
 
-        <div className="mt-auto pt-6">
+        <div className="mt-auto space-y-3 pt-6">
+          {isSuperadmin ? (
+            <Link
+              href={SUPERADMIN_HOME_PATH}
+              className="inline-flex w-full items-center gap-2.5 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2.5 text-sm font-medium text-violet-800 transition hover:border-violet-300 hover:bg-violet-100"
+              aria-label="Open superadmin console"
+            >
+              <SuperadminConsoleGlyph />
+              <span>Superadmin console</span>
+            </Link>
+          ) : null}
+
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Signed in as</p>
             <p className="mt-1 truncate text-sm font-medium text-slate-900">

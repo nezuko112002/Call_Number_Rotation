@@ -96,22 +96,13 @@ export function SuperadminShell({ children }: { children: React.ReactNode }) {
     setIsSigningOut(false);
     if (error) return;
     setUserEmail(null);
-    router.replace("/login");
+    router.replace("/login?portal=superadmin");
     router.refresh();
   };
 
   return (
     <div className="min-h-screen bg-slate-950 md:grid md:grid-cols-[280px_1fr]">
       <aside className="flex flex-col border-b border-slate-800 bg-slate-900/95 p-4 md:sticky md:top-0 md:h-screen md:overflow-hidden md:border-b-0 md:border-r md:p-5">
-        <Link
-          href="/"
-          className="mb-4 inline-flex w-full items-center gap-2.5 rounded-xl border border-slate-700 px-3 py-2.5 text-sm font-medium text-slate-300 transition hover:border-slate-600 hover:bg-slate-800 hover:text-white md:w-full"
-          aria-label="Back to agent workspace"
-        >
-          <SuperadminNavGlyph id="agentWorkspace" />
-          <span>Agent workspace</span>
-        </Link>
-
         <div className="mb-5 rounded-2xl border border-violet-500/30 bg-violet-950/50 p-4">
           <span className="inline-flex rounded-full border border-violet-400/40 bg-violet-500/10 px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-violet-200">
             Superadmin
@@ -139,7 +130,17 @@ export function SuperadminShell({ children }: { children: React.ReactNode }) {
           ))}
         </nav>
 
-        <div className="mt-auto rounded-2xl border border-slate-800 bg-slate-900 p-3 pt-6">
+        <div className="mt-auto space-y-3 pt-6">
+          <Link
+            href="/"
+            className="inline-flex w-full items-center gap-2.5 rounded-xl border border-slate-700 px-3 py-2.5 text-sm font-medium text-slate-300 transition hover:border-slate-600 hover:bg-slate-800 hover:text-white"
+            aria-label="Open agent workspace"
+          >
+            <SuperadminNavGlyph id="agentWorkspace" />
+            <span>Agent workspace</span>
+          </Link>
+
+          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Signed in as</p>
           <p className="mt-1 truncate text-sm font-medium text-white">
             {isUserLoading ? "Loading user..." : (userEmail ?? "No active user")}
@@ -153,6 +154,7 @@ export function SuperadminShell({ children }: { children: React.ReactNode }) {
             <SuperadminNavGlyph id="logout" />
             <span>{isSigningOut ? "Logging out..." : "Logout"}</span>
           </button>
+          </div>
         </div>
       </aside>
 

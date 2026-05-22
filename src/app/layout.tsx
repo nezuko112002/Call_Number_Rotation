@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { CallbackReminderBar } from "@/components/callback-reminder-bar";
 import { TwilioDeviceProvider } from "@/components/twilio-device-provider";
-import { WorkspaceDataCacheProvider } from "@/components/workspace-data-cache";
+import { WorkspaceProviders } from "@/components/workspace-providers";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -32,10 +31,9 @@ export default function RootLayout({
     >
       <body className="flex min-h-dvh flex-col bg-slate-50 text-slate-900">
         <TwilioDeviceProvider>
-          <WorkspaceDataCacheProvider>
-            <CallbackReminderBar />
+          <WorkspaceProviders>
             <div className="flex min-h-0 flex-1 flex-col">{children}</div>
-          </WorkspaceDataCacheProvider>
+          </WorkspaceProviders>
         </TwilioDeviceProvider>
       </body>
     </html>

@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { SuperadminShell } from "@/components/superadmin-shell";
 import { useTwilioDeviceContext } from "@/components/twilio-device-provider";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
 import type { ActiveConferenceSessionRow, AppUserRecord } from "@/types";
@@ -234,25 +233,18 @@ export default function SuperadminLiveCallsPage() {
   );
 
   if (!profile && isBootstrapping) {
-    return (
-      <SuperadminShell>
-        <p className="text-sm text-slate-400">Loading live QA console...</p>
-      </SuperadminShell>
-    );
+    return <p className="text-sm text-slate-400">Loading live QA console...</p>;
   }
 
   if (profile?.role !== "superadmin") {
     return (
-      <SuperadminShell>
-        <div className="rounded-xl border border-rose-500/40 bg-rose-950/40 p-4 text-sm text-rose-200">
-          {error || "Superadmin access required."}
-        </div>
-      </SuperadminShell>
+      <div className="rounded-xl border border-rose-500/40 bg-rose-950/40 p-4 text-sm text-rose-200">
+        {error || "Superadmin access required."}
+      </div>
     );
   }
 
   return (
-    <SuperadminShell>
       <section className="space-y-6">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight text-white">Live QA listen</h1>
@@ -425,6 +417,5 @@ export default function SuperadminLiveCallsPage() {
           until the agent starts a new conference-based call.
         </p>
       </section>
-    </SuperadminShell>
   );
 }
